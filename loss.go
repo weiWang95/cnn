@@ -7,9 +7,14 @@ type ILoss interface {
 	BP(out float64, expect float64) float64
 }
 
-type SquareDiff struct{}
+var (
+	SquareDiff   ILoss = &squareDiff{}
+	LogisticDiff ILoss = &logisticDiff{}
+)
 
-func (d *SquareDiff) Loss(outs []float64, expects []float64) float64 {
+type squareDiff struct{}
+
+func (d *squareDiff) Loss(outs []float64, expects []float64) float64 {
 	var loss float64
 
 	for i, _ := range outs {
@@ -18,13 +23,13 @@ func (d *SquareDiff) Loss(outs []float64, expects []float64) float64 {
 
 	return loss
 }
-func (d *SquareDiff) BP(out float64, expect float64) float64 {
+func (d *squareDiff) BP(out float64, expect float64) float64 {
 	return -(expect - out)
 }
 
-type LogisticDiff struct{}
+type logisticDiff struct{}
 
-func (d *LogisticDiff) Loss(outs []float64, expects []float64) float64 {
+func (d *logisticDiff) Loss(outs []float64, expects []float64) float64 {
 	var loss float64
 
 	for i, _ := range outs {
@@ -36,6 +41,6 @@ func (d *LogisticDiff) Loss(outs []float64, expects []float64) float64 {
 	return loss
 }
 
-func (d *LogisticDiff) BP(out float64, expect float64) float64 {
+func (d *logisticDiff) BP(out float64, expect float64) float64 {
 	return (out - expect) / (out * (1 - out))
 }

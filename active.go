@@ -8,10 +8,15 @@ type IActive interface {
 	Active(v float64) float64
 }
 
-type ReLU struct {
+var (
+	ReLU    IActive = &reLU{}
+	Sigmoid IActive = &sigmoid{}
+)
+
+type reLU struct {
 }
 
-func (a *ReLU) Active(v float64) float64 {
+func (a *reLU) Active(v float64) float64 {
 	if v > 0 {
 		return v
 	}
@@ -19,9 +24,9 @@ func (a *ReLU) Active(v float64) float64 {
 	return 0
 }
 
-type Sigmoid struct {
+type sigmoid struct {
 }
 
-func (a *Sigmoid) Active(v float64) float64 {
+func (a *sigmoid) Active(v float64) float64 {
 	return 1 / (1 + math.Pow(math.E, -v))
 }

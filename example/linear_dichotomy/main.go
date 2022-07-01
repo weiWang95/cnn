@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"math/rand"
 	"os"
 	"strconv"
@@ -18,6 +19,11 @@ func randPoint(m float64) (float64, float64) {
 func round2(v float64) float64 {
 	v, _ = strconv.ParseFloat(fmt.Sprintf("%.02f", v), 0)
 	return v
+}
+
+type Data struct {
+	Inputs  [][]float64 `json:"inputs"`
+	Expects [][]float64 `json:"expects"`
 }
 
 func main() {
@@ -55,92 +61,33 @@ func main() {
 	// 	fmt.Println(v)
 	// }
 
-	sprint := 1
-	batchSize := 100
-	study := 0.1
-	minLoss := 0.05
-	loss := &cnn.LogisticDiff{}
+	n := cnn.NewNeuralNetwork([]int64{2, 1}, cnn.Sigmoid, cnn.LogisticDiff)
 
-	l1 := cnn.NewNeuronLayer(1, 2, nil)
-	// n := cnn.NewNeuronLayer(2, 2, l1, cnn.WithNLRandomWeight(true), cnn.WithNLActive(&cnn.Sigmoid{}), cnn.WithNLWeigth(0))
-	// n = cnn.NewNeuronLayer(2, 4, n, cnn.WithNLRandomWeight(true), cnn.WithNLActive(&cnn.Sigmoid{}))
-	end := cnn.NewNeuronLayer(3, 1, l1, cnn.WithNLRandomWeight(true), cnn.WithNLActive(&cnn.Sigmoid{}), cnn.WithNLWeigth(0))
-	fmt.Println(sprint, study, end)
-
-	str := `[[{"0-0":1,"weight":0},{"0-0":1,"weight":0}],[{"1-0":-6.968860294171455,"1-1":6.854333381944804,"weight":-0.09639785805029938}]]`
-	// str := `[[{"0-0":1,"weight":0},{"0-0":1,"weight":0}],[{"1-0":-4.52341097124447,"1-1":4.943798390639264,"weight":0.0507297932148732}]]` // 0.24068127934774425
-	var ss [][]map[string]float64
-	err := json.Unmarshal([]byte(str), &ss)
+	// str := `[[{"0-0":1,"weight":0},{"0-0":1,"weight":0}],[{"0-0":-7.249935669704905,"0-1":7.90453879704736,"weight":-0.6715934689739514}]]` // 0.17254570314572118
+	// str := `[[{"0-0":1,"weight":0},{"0-0":1,"weight":0}],[{"0-0":-14.98969899799228,"0-1":13.857857520509198,"weight":0.17208973994279142}]]`  // 0.07207974243123158
+	// str := `[[{"0-0":1,"weight":0},{"0-0":1,"weight":0}],[{"0-0":-18.250244719453068,"0-1":17.060935792694767,"weight":0.14705368810981495}]]` // 0.05114406571725615
+	str := `[[{"0-0":1,"weight":0},{"0-0":1,"weight":0}],[{"0-0":-18.202112009529372,"0-1":17.093395741488663,"weight":0.6617362893934389}]]` // 0.04642070943222921
+	var wm cnn.WeightMap
+	err := json.Unmarshal([]byte(str), &wm)
 	if err != nil {
 		panic(err)
 	}
-	cnn.ApplyWeight(l1, ss)
+	n.ApplyWeight(wm)
 
-	result := make([]float64, 0)
+	data := generateData(500)
+	// saveData(data)
+	// data := loadData()
+	NewPointChart(data)
 
-	// NewPointChart(data)
+	n.Calculate(data.Inputs)
 
-	times := 0
-	for i := 0; i < sprint; i++ {
-		data := make([][]float64, 0)
-		for {
-			x, y := randPoint(1)
-			if x-y < 0.05 && x-y > -0.05 {
-				continue
-			}
-			if y > x {
-				data = append(data, []float64{x, y, 1})
-			} else {
-				data = append(data, []float64{x, y, 0})
-			}
-			if len(data) == batchSize {
-				break
-			}
-		}
+	// lossData := n.Train(data.Inputs, data.Expects, 100, 0.01, 0.01)
 
-		// NewPointChart(data)
+	// ws := n.ExportWeight()
+	// b, _ := json.Marshal(ws)
+	// fmt.Println("ws -> ", string(b))
 
-		var avgLoss float64
-		var success bool
-		for _, d := range data {
-			out := cnn.Compute(l1, d[0], d[1])
-			fmt.Printf("x:%.02f, y:%.02f, A: %.02f[%.02f]\n", d[0], d[1], out[0], d[2])
-			lo := loss.Loss(out, []float64{d[2]})
-			avgLoss += lo
-
-			if lo < minLoss {
-				times += 1
-			} else {
-				times = 0
-			}
-			if times > 20 {
-				success = true
-				break
-			}
-
-			// cnn.BP(end, study, loss, d[2])
-			result = append(result, lo)
-		}
-		if success {
-			break
-		}
-
-		avgLoss = avgLoss / float64(len(data))
-		fmt.Printf("avg loss : %v\n", avgLoss)
-
-		// result = append(result, avgLoss)
-	}
-
-	// out := cnn.Compute(l1, 0.05, 0.10)
-	// fmt.Printf("A: %.02f[%.02f] B: %.02f[%.02f]\n", out[0], 0.01, out[1], 0.99)
-
-	// cnn.BP(end, study, 0.01, 0.99)
-
-	ws := cnn.ExportWeight(l1)
-	b, _ := json.Marshal(ws)
-	fmt.Println("ws -> ", string(b))
-
-	NewLineChart(result)
+	// NewLineChart(lossData)
 }
 
 func NewLineChart(data []float64) {
@@ -170,20 +117,20 @@ func NewLineChart(data []float64) {
 	}
 }
 
-func NewPointChart(data [][]float64) {
+func NewPointChart(data *Data) {
 	series := make([]chart.Series, 0)
 	x1Value := make([]float64, 0)
 	x2Value := make([]float64, 0)
 	y1Value := make([]float64, 0)
 	y2Value := make([]float64, 0)
 
-	for i, _ := range data {
-		if data[i][2] == 1 {
-			x1Value = append(x1Value, data[i][0])
-			y1Value = append(y1Value, data[i][1])
+	for i, _ := range data.Inputs {
+		if data.Expects[i][0] == 1 {
+			x1Value = append(x1Value, data.Inputs[i][0])
+			y1Value = append(y1Value, data.Inputs[i][1])
 		} else {
-			x2Value = append(x2Value, data[i][0])
-			y2Value = append(y2Value, data[i][1])
+			x2Value = append(x2Value, data.Inputs[i][0])
+			y2Value = append(y2Value, data.Inputs[i][1])
 		}
 	}
 
@@ -191,7 +138,7 @@ func NewPointChart(data [][]float64) {
 		Name: "red",
 		Style: chart.Style{
 			StrokeWidth: chart.Disabled,
-			DotWidth:    5,
+			DotWidth:    3,
 			DotColor:    chart.ColorRed,
 		},
 		XValues: x1Value,
@@ -201,11 +148,19 @@ func NewPointChart(data [][]float64) {
 		Name: "blue",
 		Style: chart.Style{
 			StrokeWidth: chart.Disabled,
-			DotWidth:    5,
+			DotWidth:    3,
 			DotColor:    chart.ColorBlue,
 		},
 		XValues: x2Value,
 		YValues: y2Value,
+	})
+
+	series = append(series, chart.ContinuousSeries{
+		Style: chart.Style{
+			StrokeColor: chart.GetDefaultColor(1),
+		},
+		XValues: []float64{0, 0.008886, 1},
+		YValues: []float64{-0.009462, 0, 1.055400},
 	})
 	graph := chart.Chart{Series: series}
 	f, err := os.Create("data.png")
@@ -217,4 +172,55 @@ func NewPointChart(data [][]float64) {
 	if err != nil {
 		panic(err)
 	}
+}
+
+func generateData(size int) *Data {
+	inputs := make([][]float64, 0)
+	expects := make([][]float64, 0)
+	for {
+		x, y := randPoint(1)
+		if x-y < 0.05 && x-y > -0.05 {
+			continue
+		}
+		inputs = append(inputs, []float64{x, y})
+		if y > x {
+			expects = append(expects, []float64{1})
+		} else {
+			expects = append(expects, []float64{0})
+		}
+		if len(inputs) == size {
+			break
+		}
+	}
+
+	return &Data{
+		Inputs:  inputs,
+		Expects: expects,
+	}
+}
+
+func saveData(data *Data) {
+	b, _ := json.Marshal(data)
+	f, err := os.Create("data.json")
+	if err != nil {
+		panic(err)
+	}
+	defer f.Close()
+
+	f.Write(b)
+}
+
+func loadData() *Data {
+	f, err := os.Open("data.json")
+	if err != nil {
+		panic(err)
+	}
+	defer f.Close()
+
+	b, _ := ioutil.ReadAll(f)
+	var data Data
+	if err := json.Unmarshal(b, &data); err != nil {
+		panic(err)
+	}
+	return &data
 }

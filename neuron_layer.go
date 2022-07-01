@@ -41,7 +41,7 @@ func WithNLRandomWeight(enable bool) NeuronLayerOption {
 
 func getDefaultNLOption() *neuronLayerOption {
 	return &neuronLayerOption{
-		active:             &ReLU{},
+		active:             ReLU,
 		defaultInputWeight: 1,
 		defaultWeight:      0,
 	}
