@@ -10,6 +10,7 @@ type ILoss interface {
 var (
 	SquareDiff   ILoss = &squareDiff{}
 	LogisticDiff ILoss = &logisticDiff{}
+	SoftmaxDiff  ILoss = &softmaxDiff{}
 )
 
 type squareDiff struct{}
@@ -43,4 +44,14 @@ func (d *logisticDiff) Loss(outs []float64, expects []float64) float64 {
 
 func (d *logisticDiff) BP(out float64, expect float64) float64 {
 	return (out - expect) / (out * (1 - out))
+}
+
+type softmaxDiff struct{}
+
+func (d *softmaxDiff) Loss(outs []float64, expects []float64) float64 {
+	return 0
+}
+
+func (d *softmaxDiff) BP(out float64, expect float64) float64 {
+	return out - expect
 }

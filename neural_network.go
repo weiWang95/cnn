@@ -6,28 +6,51 @@ import (
 )
 
 type NeuralNetwork struct {
+	opt       *networkOption
 	StudyRate float64
 
 	lossFn ILoss
-	active IActive
 
 	inputLayer  *NeuronLayer
 	outputLayer *NeuronLayer
+	softmaxOuts []float64
 }
 
 type WeightMap [][]map[string]float64
 
-func NewNeuralNetwork(data []int64, active IActive, lossFn ILoss) *NeuralNetwork {
+type networkOption struct {
+	Softmax bool
+}
+
+func defaultNetworkOption() *networkOption {
+	return &networkOption{
+		Softmax: false,
+	}
+}
+
+type NetWorkOption func(opt *networkOption)
+
+func WithSoftmax() NetWorkOption {
+	return func(opt *networkOption) {
+		opt.Softmax = true
+	}
+}
+
+func NewNeuralNetwork(data []int64, actives []IActive, lossFn ILoss, opts ...NetWorkOption) *NeuralNetwork {
 	n := new(NeuralNetwork)
-	n.active = active
+	n.opt = defaultNetworkOption()
+	for _, item := range opts {
+		item(n.opt)
+	}
+
 	n.lossFn = lossFn
 
 	var cur *NeuronLayer
 	for i, num := range data {
 		if cur == nil {
-			cur = NewNeuronLayer(int64(i), num, nil)
+			cur = NewNeuronLayer(int64(i), num, nil, WithNLRandomWeight())
 		} else {
-			cur = NewNeuronLayer(int64(i), num, cur, WithNLActive(active))
+			cur = NewNeuronLayer(int64(i), num, cur, WithNLActive(actives[i-1]), WithNLRandomWeight())
 		}
 
 		if n.inputLayer == nil {
@@ -45,7 +68,7 @@ func (n *NeuralNetwork) Calculate(inputs [][]float64) [][]float64 {
 	for _, input := range inputs {
 		out := n.Compute(input...)
 		outs = append(outs, out)
-		fmt.Printf("input:%v -> out:%v\n", input, out)
+		// fmt.Printf("input:%v -> out:%v\n", input, out)
 	}
 
 	return outs
@@ -58,11 +81,14 @@ func (n *NeuralNetwork) Train(inputs [][]float64, expects [][]float64, sprint in
 	for i := 0; i < sprint; i++ {
 		var avgLoss float64
 		var success bool
+		var count int64
 
 		for i, input := range inputs {
+			count += 1
 			out := n.Compute(input...)
 			for _, o := range out {
 				if math.IsNaN(o) {
+					fmt.Printf("WARN: loss -> %v\n", o)
 					return result
 				}
 			}
@@ -75,7 +101,7 @@ func (n *NeuralNetwork) Train(inputs [][]float64, expects [][]float64, sprint in
 			} else {
 				times = 0
 			}
-			if times > 20 {
+			if times > len(inputs)/2 {
 				success = true
 				break
 			}
@@ -83,14 +109,14 @@ func (n *NeuralNetwork) Train(inputs [][]float64, expects [][]float64, sprint in
 			n.BP(studyRate, expects[i]...)
 		}
 
-		if success {
-			break
-		}
-
-		avgLoss = avgLoss / float64(len(inputs))
+		avgLoss = avgLoss / float64(count)
 		fmt.Printf("avg loss : %v\n", avgLoss)
 
 		result = append(result, avgLoss)
+
+		if success {
+			break
+		}
 	}
 
 	return result
@@ -100,6 +126,7 @@ func (n *NeuralNetwork) Compute(inputs ...float64) []float64 {
 	if len(inputs) != int(n.inputLayer.num) {
 		panic(fmt.Sprintf("error input num: expect %d got %d", n.inputLayer.num, len(inputs)))
 	}
+	// fmt.Println("inputs: ", inputs)
 
 	var cur *NeuronLayer
 	var outs []float64
@@ -113,12 +140,18 @@ func (n *NeuralNetwork) Compute(inputs ...float64) []float64 {
 		// fmt.Println("out -> ", outs)
 
 		if cur.Next == nil {
-			return outs
+			break
 		}
 
 		cur = cur.Next
 		inputs = outs
 	}
+
+	if n.opt.Softmax {
+		outs = n.Softmax(outs)
+	}
+
+	return outs
 }
 
 func (n *NeuralNetwork) BP(step float64, expects ...float64) {
@@ -141,13 +174,25 @@ func (n *NeuralNetwork) BP(step float64, expects ...float64) {
 
 				var pd float64
 				if cur.Next == nil {
-					pd = n.lossFn.BP(out, expects[i]) * out * (1 - out)
+					if n.opt.Softmax && len(n.softmaxOuts) > 0 {
+						// fmt.Printf("(%.06f - %.06f) * %.06f * (1 - %.06f)\n", n.softmaxOuts[i], expects[i], out, out)
+						pd = (n.softmaxOuts[i] - expects[i]) * out * (1 - out)
+					} else {
+						// pd = n.lossFn.BP(out, expects[i]) * out * (1 - out)
+						// fmt.Printf("%.06f * %.06f * (1 - %.06f) => %.06f\n", n.lossFn.BP(out, expects[i]), out, out, pd)
+						pd = cur.neurons[i].BP(n.lossFn.BP(out, expects[i]), out)
+					}
 				} else {
 					var sum float64
 					for m, _ := range cur.Next.neurons {
 						sum += cur.Next.neurons[m].DM[cur.neurons[i].Id] * cur.Next.neurons[m].OldWeight[cur.neurons[i].Id]
 					}
-					pd = sum * out * (1 - out)
+					// pd = sum * out * (1 - out)
+					// fmt.Printf("sum -> %.06f * %.06f * (1 - %.06f) => %.06f\n", sum, out, out, pd)
+					pd = cur.neurons[j].BP(sum, out)
+				}
+				if math.IsNaN(pd) {
+					panic("NaN")
 				}
 				dm[k] = pd
 
@@ -183,6 +228,53 @@ func (n *NeuralNetwork) BP(step float64, expects ...float64) {
 
 		cur = cur.Prev
 	}
+}
+
+func (n *NeuralNetwork) Softmax(inputs []float64) []float64 {
+	n.softmaxOuts = make([]float64, 0)
+
+	var max float64
+	for _, item := range inputs {
+		if item > max {
+			max = item
+		}
+	}
+
+	var sum float64
+	outs := make([]float64, 0, len(inputs))
+	for _, item := range inputs {
+		out := math.Exp(item - max)
+		sum += out
+		outs = append(outs, out)
+	}
+
+	for i, _ := range outs {
+		outs[i] = outs[i] / sum
+		n.softmaxOuts = append(n.softmaxOuts, outs[i])
+	}
+
+	return outs
+}
+
+func (n *NeuralNetwork) SoftmaxBP(outs []float64, expects []float64) []float64 {
+	var expectIdx int
+	for i, item := range expects {
+		if item == 1 {
+			expectIdx = i
+			break
+		}
+	}
+
+	douts := make([]float64, 0, len(outs))
+	for i, item := range outs {
+		if i == expectIdx {
+			douts = append(douts, -1*math.Log(item))
+		} else {
+			douts = append(douts, item)
+		}
+	}
+
+	return douts
 }
 
 func (n *NeuralNetwork) ApplyWeight(data WeightMap) {

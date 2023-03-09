@@ -8,6 +8,7 @@ type Neuron struct {
 	OldWeight   map[string]float64
 	Weight      float64
 
+	Net float64
 	Out float64
 	DM  map[string]float64
 }
@@ -25,7 +26,8 @@ func (n *Neuron) Compute(input map[string]float64) float64 {
 
 	// fmt.Printf("%f => %f", n.Weight, total+n.Weight)
 
-	n.Out = n.Active(total + n.Weight)
+	n.Net = total + n.Weight
+	n.Out = n.Active(n.Net)
 
 	// fmt.Printf("  [active] => %f\n", n.Out)
 	return n.Out

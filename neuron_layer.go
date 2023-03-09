@@ -33,9 +33,9 @@ func WithNLInputWeigth(weight float64) NeuronLayerOption {
 		opt.defaultInputWeight = weight
 	}
 }
-func WithNLRandomWeight(enable bool) NeuronLayerOption {
+func WithNLRandomWeight() NeuronLayerOption {
 	return func(opt *neuronLayerOption) {
-		opt.randomWeight = enable
+		opt.randomWeight = true
 	}
 }
 
