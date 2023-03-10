@@ -21,8 +21,8 @@ var (
 	gamma      = 0.99
 	epsilon    = 0.9
 	incEpsilon = 0.0001
-	rate       = 0.01
-	minEx      = 500
+	rate       = 0.1
+	minEx      = 100
 )
 
 var operate = []g2048.Direction{g2048.DirectionUp, g2048.DirectionDown, g2048.DirectionLeft, g2048.DirectionRight}
@@ -42,7 +42,7 @@ func run() {
 	for {
 		env.Inspect()
 
-		d := predict(q, normalizeInput(env.State()))
+		_, d := predict(q, normalizeInput(env.State()))
 		ex := operateEnv(env, d)
 
 		if ex.End {
@@ -54,14 +54,15 @@ func run() {
 }
 
 func train() {
-	q := cnn.NewNeuralNetwork([]int64{16, 64, 64, 4}, []cnn.IActive{cnn.ReLU, cnn.ReLU, cnn.ReLU}, cnn.SquareDiff, cnn.WithSoftmax())
+	q := cnn.NewNeuralNetwork([]int64{16, 64, 64, 4}, []cnn.IActive{cnn.ReLU, cnn.ReLU, cnn.ReLU}, cnn.SquareDiff)
 	o1 := q.ExportWeight()
 
-	q2 := cnn.NewNeuralNetwork([]int64{16, 64, 64, 4}, []cnn.IActive{cnn.ReLU, cnn.ReLU, cnn.ReLU}, cnn.SquareDiff, cnn.WithSoftmax())
+	q2 := cnn.NewNeuralNetwork([]int64{16, 64, 64, 4}, []cnn.IActive{cnn.ReLU, cnn.ReLU, cnn.ReLU}, cnn.SquareDiff)
 	q2.ApplyWeight(o1)
 
 	pool := NewExPool(10000)
-	env := g2048.NewGame(w, w, time.Now().UnixNano())
+	seed := time.Now().UnixNano()
+	env := g2048.NewGame(w, w, seed)
 	env.Init()
 
 	fmt.Println("init pool")
@@ -75,7 +76,7 @@ func train() {
 
 		if ex.End {
 			env.Init()
-			env.SetSeed(time.Now().UnixNano())
+			env.SetSeed(seed)
 		}
 	}
 
@@ -83,17 +84,30 @@ func train() {
 	for i := 0; i < 200; i++ {
 		fmt.Println("start run: ", i)
 		env.Init()
-		env.SetSeed(time.Now().UnixNano())
+		env.SetSeed(seed)
 		step := 0
 
 		for {
 			step += 1
-			ex := operateEnv(env, sampleOperate(q2, pool, env.State()))
+			_, d1 := sampleOperate(q2, env.State())
+			ex := operateEnv(env, d1)
 			pool.Push(ex)
 
 			if pool.Len() > minEx && step%freq == 0 {
 				for _, item := range pool.Sample(batchSize) {
-					learn(q, item)
+					// qouts := q.Compute(normalizeInput(item.State)...)
+					// idx := cnn.ArgMax(qouts...)
+
+					// nextState, score, _ := env.TryOperate(item.State, d)
+					// reward := float64(score - env.Score())
+					q2outs := q2.Compute(normalizeInput(item.NextState)...)
+					maxQ := cnn.Max(q2outs...)
+					reward := item.Reward + gamma*maxQ
+
+					qouts := q.Compute(normalizeInput(item.State)...)
+
+					qouts[item.Action] = reward
+					q.BP(rate, qouts...)
 				}
 			}
 
@@ -114,26 +128,17 @@ func train() {
 	saveModel(q2)
 }
 
-func predict(n *cnn.NeuralNetwork, state []float64) g2048.Direction {
-	out := n.Compute(state...)
-	return getOperate(out)
+func predict(n *cnn.NeuralNetwork, state []float64) ([]float64, g2048.Direction) {
+	outs := n.Compute(state...)
+	d := cnn.ArgMax(outs...)
+	// fmt.Printf("predict: %v -> %d\n", outs, d)
+	return outs, g2048.Direction(d)
 }
 
-func learn(n *cnn.NeuralNetwork, ex Ex) {
-	reward := ex.Reward
-	if !ex.End {
-		reward = ex.Reward + gamma*n.Compute(normalizeInput(ex.State)...)[0]
-	}
-
-	expect := []float64{0.01, 0.01, 0.01, 0.01}
-	expect[ex.Action] = 0.99
-	n.BP(rate*reward, expect...)
-}
-
-func sampleOperate(n *cnn.NeuralNetwork, pool *ExPool, state []uint) g2048.Direction {
+func sampleOperate(n *cnn.NeuralNetwork, state []uint) ([]float64, g2048.Direction) {
 	r := rand.Float64()
 	if r < epsilon {
-		return randOperate()
+		return []float64{0.01, 0.01, 0.01, 0.01}, randOperate()
 	} else {
 		epsilon = math.Max(0.01, epsilon-incEpsilon)
 		return predict(n, normalizeInput(state))
@@ -159,19 +164,6 @@ func getInputs(g *g2048.Game) []float64 {
 	return inputs
 }
 
-func getOperate(out []float64) g2048.Direction {
-	var maxIdx int
-	var max float64
-	for i, item := range out {
-		if item > max {
-			maxIdx = i
-			max = item
-		}
-	}
-
-	return operate[maxIdx]
-}
-
 func printOuts(outs []float64) []string {
 	strs := make([]string, 0, len(outs))
 	for _, item := range outs {
@@ -192,12 +184,7 @@ func operateEnv(env *g2048.Game, d g2048.Direction) Ex {
 }
 
 func normalize(d int) float64 {
-	v := math.Log(float64(d+1)) / 16
-	if v == 0 {
-		return 0.000001
-	}
-
-	return v
+	return math.Log(float64(d+1)) / 16
 }
 
 func normalizeInput(inputs []uint) []float64 {
@@ -211,6 +198,7 @@ func normalizeInput(inputs []uint) []float64 {
 func saveModel(n *cnn.NeuralNetwork) error {
 	d := n.ExportWeight()
 	bs, _ := json.Marshal(d)
+	fmt.Println(string(bs))
 	return ioutil.WriteFile("model.json", bs, os.ModePerm)
 }
 

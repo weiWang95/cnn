@@ -10,8 +10,9 @@ type Area struct {
 	h    int
 	seed int64
 
-	data  [][]uint
-	score int
+	data    [][]uint
+	newData [][]uint
+	score   int
 }
 
 func newArea(w, h int, seed int64) *Area {
@@ -28,6 +29,11 @@ func (a *Area) init() {
 	a.data = make([][]uint, a.h)
 	for i, _ := range a.data {
 		a.data[i] = make([]uint, a.w)
+	}
+
+	a.newData = make([][]uint, a.h)
+	for i, _ := range a.newData {
+		a.newData[i] = make([]uint, a.w)
 	}
 	a.score = 0
 }
@@ -48,8 +54,8 @@ func (a *Area) random() {
 	}
 }
 
-func (a *Area) isFull() bool {
-	for _, item := range a.data {
+func (a *Area) isFull(data [][]uint) bool {
+	for _, item := range data {
 		for _, i := range item {
 			if i == 0 {
 				return false
@@ -61,130 +67,174 @@ func (a *Area) isFull() bool {
 }
 
 func (a *Area) left() {
-	for y, _ := range a.data {
+	a.copyData(a.data, a.newData)
+	a.newData = a.doLeft(a.newData)
+}
+
+func (a *Area) doLeft(data [][]uint) [][]uint {
+	for y, _ := range data {
 		position := 0
 
 		for x := 1; x < a.w; x++ {
-			if a.data[y][x] == 0 {
+			if data[y][x] == 0 {
 				continue
 			}
 
-			if a.data[y][position] == 0 {
-				a.data[y][position] = a.data[y][x]
-				a.data[y][x] = 0
+			if data[y][position] == 0 {
+				data[y][position] = data[y][x]
+				data[y][x] = 0
 				continue
 			}
 
-			if a.data[y][position] == a.data[y][x] {
-				a.data[y][position] = a.data[y][position] * 2
-				a.data[y][x] = 0
+			if data[y][position] == data[y][x] {
+				data[y][position] = data[y][position] * 2
+				data[y][x] = 0
 				position++
 			} else {
 				position++
 				if position != x {
-					a.data[y][position] = a.data[y][x]
-					a.data[y][x] = 0
+					data[y][position] = data[y][x]
+					data[y][x] = 0
 				}
 			}
 		}
 	}
+
+	return data
 }
 
 func (a *Area) right() {
-	for y, _ := range a.data {
+	a.copyData(a.data, a.newData)
+	a.newData = a.doRight(a.newData)
+}
+
+func (a *Area) doRight(data [][]uint) [][]uint {
+	for y, _ := range data {
 		position := a.w - 1
 
 		for x := position - 1; x >= 0; x-- {
-			if a.data[y][x] == 0 {
+			if data[y][x] == 0 {
 				continue
 			}
 
-			if a.data[y][position] == 0 {
-				a.data[y][position] = a.data[y][x]
-				a.data[y][x] = 0
+			if data[y][position] == 0 {
+				data[y][position] = data[y][x]
+				data[y][x] = 0
 				continue
 			}
 
-			if a.data[y][position] == a.data[y][x] {
-				a.data[y][position] = a.data[y][position] * 2
-				a.data[y][x] = 0
+			if data[y][position] == data[y][x] {
+				data[y][position] = data[y][position] * 2
+				data[y][x] = 0
 				position--
 			} else {
 				position--
 				if position != x {
-					a.data[y][position] = a.data[y][x]
-					a.data[y][x] = 0
+					data[y][position] = data[y][x]
+					data[y][x] = 0
 				}
 			}
 		}
 	}
+
+	return data
 }
 
 func (a *Area) up() {
+	a.copyData(a.data, a.newData)
+	a.newData = a.doUp(a.newData)
+}
+
+func (a *Area) doUp(data [][]uint) [][]uint {
 	for x := 0; x < a.w; x++ {
 		position := 0
 		for y := position + 1; y < a.h; y++ {
-			if a.data[y][x] == 0 {
+			if data[y][x] == 0 {
 				continue
 			}
 
-			if a.data[position][x] == 0 {
-				a.data[position][x] = a.data[y][x]
-				a.data[y][x] = 0
+			if data[position][x] == 0 {
+				data[position][x] = data[y][x]
+				data[y][x] = 0
 				continue
 			}
 
-			if a.data[position][x] == a.data[y][x] {
-				a.data[position][x] = a.data[position][x] * 2
-				a.data[y][x] = 0
+			if data[position][x] == data[y][x] {
+				data[position][x] = data[position][x] * 2
+				data[y][x] = 0
 				position++
 			} else {
 				position++
 				if position != y {
-					a.data[position][x] = a.data[y][x]
-					a.data[y][x] = 0
+					data[position][x] = data[y][x]
+					data[y][x] = 0
 				}
 			}
 		}
 	}
+
+	return data
 }
 
 func (a *Area) down() {
+	a.copyData(a.data, a.newData)
+	a.newData = a.doDown(a.newData)
+}
+
+func (a *Area) doDown(data [][]uint) [][]uint {
 	for x := 0; x < a.w; x++ {
 		position := a.h - 1
 		for y := position - 1; y >= 0; y-- {
-			if a.data[y][x] == 0 {
+			if data[y][x] == 0 {
 				continue
 			}
 
-			if a.data[position][x] == 0 {
-				a.data[position][x] = a.data[y][x]
-				a.data[y][x] = 0
+			if data[position][x] == 0 {
+				data[position][x] = data[y][x]
+				data[y][x] = 0
 				continue
 			}
 
-			if a.data[position][x] == a.data[y][x] {
-				a.data[position][x] = a.data[position][x] * 2
-				a.data[y][x] = 0
+			if data[position][x] == data[y][x] {
+				data[position][x] = data[position][x] * 2
+				data[y][x] = 0
 				position--
 			} else {
 				position--
 				if position != y {
-					a.data[position][x] = a.data[y][x]
-					a.data[y][x] = 0
+					data[position][x] = data[y][x]
+					data[y][x] = 0
 				}
 			}
 		}
 	}
+
+	return data
 }
 
-func (a *Area) computeScore() {
+func (a *Area) apply() {
+	a.copyData(a.newData, a.data)
+}
+
+func (a *Area) copyData(source, target [][]uint) {
+	for i, _ := range source {
+		for j, _ := range source[i] {
+			target[i][j] = source[i][j]
+		}
+	}
+}
+
+func (a *Area) computeScore(data [][]uint) int {
 	var sum int
-	for _, row := range a.data {
+	for _, row := range data {
 		for _, item := range row {
 			sum += int(item)
 		}
 	}
+	return sum
+}
+
+func (a *Area) SetScore(sum int) {
 	a.score = sum
 }
 

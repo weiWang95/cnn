@@ -52,6 +52,7 @@ func (g *Game) Init() {
 
 func (g *Game) SetSeed(seed int64) {
 	g.seed = seed
+	g.area.seed = seed
 }
 
 func (g *Game) Over() {
@@ -72,9 +73,11 @@ func (g *Game) Operate(d Direction) bool {
 		return true
 	}
 
-	g.area.computeScore()
+	g.area.apply()
+	score := g.area.computeScore(g.area.data)
+	g.area.SetScore(score)
 
-	if g.area.isFull() {
+	if g.area.isFull(g.area.data) {
 		return false
 	}
 
@@ -83,18 +86,55 @@ func (g *Game) Operate(d Direction) bool {
 	return true
 }
 
+func (g *Game) TryOperate(state []uint, d Direction) (nextState []uint, score int, end bool) {
+	data := g.parseState(state)
+
+	switch d {
+	case DirectionUp:
+		data = g.area.doUp(data)
+	case DirectionDown:
+		data = g.area.doDown(data)
+	case DirectionLeft:
+		data = g.area.doLeft(data)
+	case DirectionRight:
+		data = g.area.doRight(data)
+	}
+
+	end = g.area.isFull(data)
+	score = g.area.computeScore(data)
+	nextState = g.getState(data)
+	return
+}
+
 func (g *Game) Data(x, y int) uint {
 	return g.area.data[y][x]
 }
 
 func (g *Game) State() []uint {
+	return g.getState(g.area.data)
+}
+
+func (g *Game) getState(data [][]uint) []uint {
 	state := make([]uint, 0, g.area.w*g.area.h)
 	for y := 0; y < g.area.h; y++ {
 		for x := 0; x < g.area.w; x++ {
-			state = append(state, g.area.data[y][x])
+			state = append(state, data[y][x])
 		}
 	}
 	return state
+}
+
+func (g *Game) parseState(state []uint) [][]uint {
+	data := make([][]uint, g.area.h)
+	for i, _ := range state {
+		y := i / g.area.h
+		x := i % g.area.h
+		if len(data[y]) == 0 {
+			data[y] = make([]uint, g.area.h)
+		}
+		data[y][x] = state[i]
+	}
+	return data
 }
 
 func (g *Game) SetData(data [][]uint) {
@@ -144,9 +184,11 @@ func (g *Game) inputListen() {
 			continue
 		}
 
-		g.area.computeScore()
+		g.area.apply()
+		score := g.area.computeScore(g.area.data)
+		g.area.SetScore(score)
 
-		if g.area.isFull() {
+		if g.area.isFull(g.area.data) {
 			g.Over()
 			return
 		}
