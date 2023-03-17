@@ -7,6 +7,8 @@ import (
 	"syscall"
 )
 
+const NoMoveReward = -20
+
 type Direction int
 
 const (
@@ -59,49 +61,55 @@ func (g *Game) Over() {
 	close(g.done)
 }
 
-func (g *Game) Operate(d Direction) bool {
+func (g *Game) Operate(d Direction) (bool, int) {
+	var stepScore int
 	switch d {
 	case DirectionUp:
-		g.area.up()
+		stepScore = g.area.up()
 	case DirectionDown:
-		g.area.down()
+		stepScore = g.area.down()
 	case DirectionLeft:
-		g.area.left()
+		stepScore = g.area.left()
 	case DirectionRight:
-		g.area.right()
+		stepScore = g.area.right()
 	default:
-		return true
+		return true, stepScore
 	}
 
 	g.area.apply()
 	score := g.area.computeScore(g.area.data)
 	g.area.SetScore(score)
 
-	if g.area.isFull(g.area.data) {
-		return false
+	if g.area.isEnd(g.area.data) {
+		return false, int(stepScore)
 	}
 
-	g.area.random()
+	// 无效移动，扣分
+	if !g.area.random() {
+		stepScore += NoMoveReward
+	} else {
+		stepScore += 1
+	}
 
-	return true
+	return true, stepScore
 }
 
-func (g *Game) TryOperate(state []uint, d Direction) (nextState []uint, score int, end bool) {
+func (g *Game) TryOperate(state []uint, d Direction) (nextState []uint, totalScore int, stepScore int, end bool) {
 	data := g.parseState(state)
 
 	switch d {
 	case DirectionUp:
-		data = g.area.doUp(data)
+		data, stepScore = g.area.doUp(data)
 	case DirectionDown:
-		data = g.area.doDown(data)
+		data, stepScore = g.area.doDown(data)
 	case DirectionLeft:
-		data = g.area.doLeft(data)
+		data, stepScore = g.area.doLeft(data)
 	case DirectionRight:
-		data = g.area.doRight(data)
+		data, stepScore = g.area.doRight(data)
 	}
 
-	end = g.area.isFull(data)
-	score = g.area.computeScore(data)
+	end = g.area.isEnd(data)
+	totalScore = g.area.computeScore(data)
 	nextState = g.getState(data)
 	return
 }
@@ -149,6 +157,10 @@ func (g *Game) Score() int {
 	return g.area.Score()
 }
 
+func (g *Game) Max() uint {
+	return g.area.max(g.area.data)
+}
+
 func (g *Game) info() {
 	fmt.Printf("2048 Game\n")
 	fmt.Printf("w a s d 移动\n")
@@ -188,7 +200,7 @@ func (g *Game) inputListen() {
 		score := g.area.computeScore(g.area.data)
 		g.area.SetScore(score)
 
-		if g.area.isFull(g.area.data) {
+		if g.area.isEnd(g.area.data) {
 			g.Over()
 			return
 		}

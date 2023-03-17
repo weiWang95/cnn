@@ -17,17 +17,20 @@ type Data struct {
 	Expects [][]float64 `json:"expects"`
 }
 
-func main() {
-	n := cnn.NewNeuralNetwork([]int64{2, 2, 1}, []cnn.IActive{cnn.LeakyReLU, cnn.Sigmoid}, cnn.LogisticDiff)
+func getY(x float64) float64 {
+	return (0.5 - 1.8064707106963138 + 3.4749862954045105*x) / 3.092046613512652
+}
 
-	// str := `[[{"0-0":1,"weight":0},{"0-0":1,"weight":0}],[{"0-0":0.4,"0-1":0.4,"weight":0.1},{"0-0":-0.4,"0-1":-0.4,"weight":0.1}],[{"1-0":0.4,"1-1":0.2,"weight":0.1}]]`
-	str := `[[{"0-0":1,"weight":0},{"0-0":1,"weight":0}],[{"0-0":-1.3321899513787225,"0-1":1.3153118291249737,"weight":-0.0025476508128429768},{"0-0":-4.994017108368555,"0-1":1.0383126734434818,"weight":-1.0506058049185316}],[{"1-0":7.709941276072755,"1-1":7.679521938191185,"weight":-3.3414160550111562}]]` //0.003701116800855907
-	var wm cnn.WeightMap
-	err := json.Unmarshal([]byte(str), &wm)
-	if err != nil {
-		panic(err)
-	}
-	n.ApplyWeight(wm)
+func main() {
+	n := cnn.NewNeuralNetwork([]int64{2, 1}, []cnn.IActive{cnn.Sigmoid}, cnn.LogisticDiff, cnn.WithDefaultInputWeight(0.1), cnn.WithDefaultWeight(0.1))
+
+	// str := `[[{"0-0":1,"weight":0},{"0-0":1,"weight":0}],[{"0-0":-3.4749862954045105,"0-1":3.092046613512652,"weight":1.8064707106963138}]]`
+	// var wm cnn.WeightMap
+	// err := json.Unmarshal([]byte(str), &wm)
+	// if err != nil {
+	// 	panic(err)
+	// }
+	// n.ApplyWeight(wm)
 
 	// data := generateDataV2(200)
 	// saveData(data)
@@ -43,7 +46,7 @@ func main() {
 				fmt.Println("err -> ", err)
 			}
 		}()
-		lossData = n.Train(data.Inputs, data.Expects, 10000, 0.01, 0.01)
+		lossData = n.Train(data.Inputs, data.Expects, 1000, 32, 0.1, 0.01)
 
 		// outs := n.Calculate(data.Inputs)
 		// for i, item := range outs {
@@ -94,7 +97,7 @@ func NewPointChart(data *Data) {
 	y2Value := make([]float64, 0)
 
 	for i, _ := range data.Inputs {
-		if data.Expects[i][0] == 1 {
+		if data.Expects[i][0] > 0.5 {
 			x1Value = append(x1Value, data.Inputs[i][0])
 			y1Value = append(y1Value, data.Inputs[i][1])
 		} else {
@@ -124,13 +127,13 @@ func NewPointChart(data *Data) {
 		YValues: y2Value,
 	})
 
-	// series = append(series, chart.ContinuousSeries{
-	// 	Style: chart.Style{
-	// 		StrokeColor: chart.GetDefaultColor(1),
-	// 	},
-	// 	XValues: []float64{0, 0.008886, 1},
-	// 	YValues: []float64{-0.009462, 0, 1.055400},
-	// })
+	series = append(series, chart.ContinuousSeries{
+		Style: chart.Style{
+			StrokeColor: chart.GetDefaultColor(1),
+		},
+		XValues: []float64{0, 4},
+		YValues: []float64{getY(0), getY(4)},
+	})
 	graph := chart.Chart{Series: series}
 	f, err := os.Create("data.png")
 	if err != nil {
@@ -176,10 +179,10 @@ func generateDataV2(size int) *Data {
 		var x, y float64
 		if b {
 			x, y = randPointV2(1, 2, 2.8)
-			expects = append(expects, []float64{1})
+			expects = append(expects, []float64{0.99})
 		} else {
 			x, y = randPointV2(1, 2.8, 2)
-			expects = append(expects, []float64{0})
+			expects = append(expects, []float64{0.01})
 		}
 
 		inputs = append(inputs, []float64{x, y})

@@ -48,7 +48,7 @@ func main() {
 
 	n.Calculate(data.Inputs)
 
-	lossData := n.Train(data.Inputs, data.Expects, 100, 0.8, 0.01)
+	lossData := n.Train(data.Inputs, data.Expects, 100, 16, 0.8, 0.01)
 
 	ws := n.ExportWeight()
 	b, _ := json.Marshal(ws)

@@ -1,146 +1,257 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"math"
 	"math/rand"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
+	"github.com/sirupsen/logrus"
 	"github.com/weiWang95/cnn"
 	"github.com/weiWang95/cnn/example/game2048/g2048"
 )
 
-const w = 4
+const w = 3
 
 var (
 	freq       = 5
-	batchSize  = 16
+	batchSize  = 32
 	gamma      = 0.99
 	epsilon    = 0.9
 	incEpsilon = 0.0001
-	rate       = 0.1
+	rate       = 0.001
 	minEx      = 100
 )
 
 var operate = []g2048.Direction{g2048.DirectionUp, g2048.DirectionDown, g2048.DirectionLeft, g2048.DirectionRight}
 
 func main() {
-	// run()
-	train()
+	// logrus.SetLevel(logrus.TraceLevel)
+	logrus.SetLevel(logrus.DebugLevel)
+	Train()
+
+	// for i := 0; i < 5; i++ {
+	// 	run(true)
+	// }
 }
 
-func run() {
-	q := cnn.NewNeuralNetwork([]int64{16, 32, 32, 4}, []cnn.IActive{cnn.ReLU, cnn.ReLU, cnn.ReLU}, cnn.SquareDiff, cnn.WithSoftmax())
-	loadModel(q)
+func Train() {
+	ctx, cancel := context.WithCancel(context.Background())
+	done := train(ctx)
+	// train2()
+
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, syscall.SIGQUIT, syscall.SIGTERM, syscall.SIGINT)
+	select {
+	case <-sig:
+		logrus.Info("receive sigterm")
+		cancel()
+		time.Sleep(3 * time.Second)
+		logrus.Info("over 3 sec")
+	case <-done:
+	}
+
+	logrus.Info("start test run")
+
+	for i := 0; i < 5; i++ {
+		logrus.Infof("start run: %d", i)
+		run(false)
+	}
+}
+
+func run(print bool) {
+	q := cnn.NewNeuralNetwork([]int64{w * w, 128, 4}, []cnn.IActive{cnn.ReLU, cnn.ReLU, cnn.ReLU}, cnn.SquareDiff, cnn.WithSoftmax())
+	// loadModel(q, "model_3x3.json")
+	loadModel(q, "model.json")
 
 	env := g2048.NewGame(w, w, time.Now().UnixNano())
 	env.Init()
-
-	for {
+	if print {
 		env.Inspect()
+	}
 
-		_, d := predict(q, normalizeInput(env.State()))
-		ex := operateEnv(env, d)
+	step := 0
+	m := make(map[g2048.Direction]int)
+	for {
+		step += 1
 
-		if ex.End {
-			break
+		d := predict(q, normalizeInput(env.State()))
+		cont, reward := env.Operate(d)
+		// ex := operateEnv(env, d)
+		m[d] = m[d] + 1
+
+		if print {
+			env.Inspect()
 		}
 
-		time.Sleep(time.Second)
+		// 结束 或者 无效移动
+		if !cont || reward == g2048.NoMoveReward {
+			break
+		}
 	}
+
+	logrus.Debugf("step:%d score:%d, %v\n", step, env.Score(), m)
 }
 
-func train() {
-	q := cnn.NewNeuralNetwork([]int64{16, 64, 64, 4}, []cnn.IActive{cnn.ReLU, cnn.ReLU, cnn.ReLU}, cnn.SquareDiff)
-	o1 := q.ExportWeight()
+func train(ctx context.Context) <-chan struct{} {
+	var stop bool
+	done := make(chan struct{})
 
-	q2 := cnn.NewNeuralNetwork([]int64{16, 64, 64, 4}, []cnn.IActive{cnn.ReLU, cnn.ReLU, cnn.ReLU}, cnn.SquareDiff)
-	q2.ApplyWeight(o1)
+	go func() {
+		rand.Seed(time.Now().UnixNano())
+		result := make([]float64, 0)
+		q := cnn.NewNeuralNetwork([]int64{w * w, 128, 4}, []cnn.IActive{cnn.ReLU, cnn.ReLU, cnn.ReLU}, cnn.SquareDiff, cnn.WithDefaultInputWeight(0.0001), cnn.WithDefaultWeight(0.0001))
+		// loadModel(q, "model.json")
+		o1 := q.ExportWeight()
 
-	pool := NewExPool(10000)
-	seed := time.Now().UnixNano()
-	env := g2048.NewGame(w, w, seed)
-	env.Init()
+		q2 := cnn.NewNeuralNetwork([]int64{w * w, 128, 4}, []cnn.IActive{cnn.ReLU, cnn.ReLU, cnn.ReLU}, cnn.SquareDiff)
+		q2.ApplyWeight(o1)
 
-	fmt.Println("init pool")
-	for {
-		if pool.Len() >= minEx {
-			break
-		}
-
-		ex := operateEnv(env, randOperate())
-		pool.Push(ex)
-
-		if ex.End {
-			env.Init()
-			env.SetSeed(seed)
-		}
-	}
-
-	fmt.Println("start run")
-	for i := 0; i < 200; i++ {
-		fmt.Println("start run: ", i)
+		pool := NewExPool(6000)
+		seed := time.Now().UnixNano()
+		env := g2048.NewGame(w, w, seed)
 		env.Init()
-		env.SetSeed(seed)
-		step := 0
 
-		for {
-			step += 1
-			_, d1 := sampleOperate(q2, env.State())
-			ex := operateEnv(env, d1)
-			pool.Push(ex)
-
-			if pool.Len() > minEx && step%freq == 0 {
-				for _, item := range pool.Sample(batchSize) {
-					// qouts := q.Compute(normalizeInput(item.State)...)
-					// idx := cnn.ArgMax(qouts...)
-
-					// nextState, score, _ := env.TryOperate(item.State, d)
-					// reward := float64(score - env.Score())
-					q2outs := q2.Compute(normalizeInput(item.NextState)...)
-					maxQ := cnn.Max(q2outs...)
-					reward := item.Reward + gamma*maxQ
-
-					qouts := q.Compute(normalizeInput(item.State)...)
-
-					qouts[item.Action] = reward
-					q.BP(rate, qouts...)
-				}
+		defer func() {
+			logrus.Infof("stoped! %d", len(result))
+			if err := saveModel(q2); err != nil {
+				logrus.Trace("err: ", err)
 			}
 
-			if ex.End {
-				fmt.Printf("step:%v score:%v\n", step, env.Score())
+			cnn.GenerateLossChart(result, "loss_out.jpg")
+
+			close(done)
+		}()
+
+		logrus.Debug("init pool")
+		for {
+			if pool.Len() >= minEx {
 				break
 			}
+
+			ex := operateEnv(env, randOperate())
+			pool.Push(ex)
+
+			if ex.End {
+				env.Init()
+				// env.SetSeed(seed)
+			}
 		}
 
-		syncWeight(q, q2)
-	}
+		logrus.Debug("start run")
+		for i := 0; i < 2000; i++ {
+			if stop {
+				break
+			}
+			logrus.Debugf("start run: %d eps:%.06f \n", i, epsilon)
+			env.Init()
+			// env.SetSeed(seed)
+			step := 0
+			reward := 0.0
 
-	// os1, _ := json.Marshal(q.ExportWeight())
-	// fmt.Println(string(os1))
+			for {
+				step += 1
+				d1 := sampleOperate(q2, env.State())
+				ex := operateEnv(env, d1)
+				pool.Push(ex)
+				reward += ex.Reward
 
-	// os2, _ := json.Marshal(q2.ExportWeight())
-	// fmt.Println(string(os2))
-	saveModel(q2)
+				if pool.Len() > minEx && step%freq == 0 {
+					avgLoss := 0.0
+
+					for _, item := range pool.Sample(batchSize) {
+						// qouts := q.Compute(normalizeInput(item.State)...)
+						// idx := cnn.ArgMax(qouts...)
+
+						// nextState, score, _ := env.TryOperate(item.State, d)
+						// reward := float64(score - env.Score())
+						reward := item.Reward
+						if !item.End && item.Reward != g2048.NoMoveReward {
+							inputs := normalizeInput(item.NextState)
+
+							qouts := q.Compute(inputs...)
+							idx := cnn.ArgMax(qouts...)
+
+							logrus.Tracef("inputs: %v\n", inputs)
+							q2outs := q2.Compute(inputs...)
+							logrus.Tracef("outs: %v idx:%d\n", q2outs, idx)
+
+							logrus.Tracef("%.06f + %.06f * %.06f", reward, gamma, q2outs[idx])
+							reward += gamma * q2outs[idx]
+							logrus.Tracef(" => %.06f\n", reward)
+						}
+
+						qouts := q.Compute(normalizeInput(item.State)...)
+						loss := cnn.SquareDiff.Loss([]float64{qouts[item.Action]}, []float64{reward})
+						logrus.Tracef("loss: %.06f [%.06f %.06f]\n", loss, qouts[item.Action], reward)
+						avgLoss += loss
+
+						qouts[item.Action] = reward
+						q.BP(rate, qouts...)
+						// expects := []float64{0, 0, 0, 0}
+						// expects[item.Action] = reward
+						// q.BP(rate, expects...)
+					}
+
+					avgLoss = avgLoss / float64(batchSize)
+					logrus.Tracef("avg loss -> %.06f\n", avgLoss/float64(batchSize))
+					if avgLoss < 1 {
+						result = append(result, avgLoss)
+					}
+
+					syncWeight(q, q2)
+				}
+
+				if ex.End {
+					logrus.Debugf("step:%v score:%v max:%v reward: %v\n", step, env.Score(), env.Max(), reward)
+					break
+				} else if ex.Reward == g2048.NoMoveReward {
+					for _, item := range []int{0, 1, 2, 3} {
+						ex := operateEnv(env, g2048.Direction(item))
+						pool.Push(ex)
+						if ex.Reward != g2048.NoMoveReward {
+							reward += ex.Reward
+							break
+						}
+					}
+				}
+			}
+		}
+	}()
+
+	go func() {
+		select {
+		case <-done:
+			logrus.Info("done")
+		case <-ctx.Done():
+			logrus.Info("stoping")
+			stop = true
+		}
+	}()
+
+	return done
 }
 
-func predict(n *cnn.NeuralNetwork, state []float64) ([]float64, g2048.Direction) {
+func predict(n *cnn.NeuralNetwork, state []float64) g2048.Direction {
 	outs := n.Compute(state...)
 	d := cnn.ArgMax(outs...)
-	// fmt.Printf("predict: %v -> %d\n", outs, d)
-	return outs, g2048.Direction(d)
+	logrus.Tracef("predict: %v -> %d\n", outs, d)
+	return g2048.Direction(d)
 }
 
-func sampleOperate(n *cnn.NeuralNetwork, state []uint) ([]float64, g2048.Direction) {
+func sampleOperate(n *cnn.NeuralNetwork, state []uint) g2048.Direction {
+	epsilon = math.Max(0.01, epsilon-incEpsilon)
+
 	r := rand.Float64()
 	if r < epsilon {
-		return []float64{0.01, 0.01, 0.01, 0.01}, randOperate()
+		return randOperate()
 	} else {
-		epsilon = math.Max(0.01, epsilon-incEpsilon)
 		return predict(n, normalizeInput(state))
 	}
 }
@@ -175,16 +286,30 @@ func printOuts(outs []float64) []string {
 
 func operateEnv(env *g2048.Game, d g2048.Direction) Ex {
 	ex := Ex{State: env.State(), Action: uint8(d)}
-	oldReward := normalize(env.Score())
-	ex.End = !env.Operate(d)
-	ex.Reward = normalize(env.Score()) - oldReward
+	coun, score := env.Operate(d)
+	ex.End = !coun
+	ex.Reward = float64(score)
 	ex.NextState = env.State()
 
 	return ex
 }
 
+func tryOperateEnv(env *g2048.Game, d g2048.Direction) Ex {
+	ex := Ex{State: env.State(), Action: uint8(d)}
+	nextState, _, stepScore, isEnd := env.TryOperate(ex.State, d)
+	ex.End = isEnd
+	ex.Reward = float64(stepScore)
+	ex.NextState = nextState
+
+	return ex
+}
+
 func normalize(d int) float64 {
-	return math.Log(float64(d+1)) / 16
+	if d == 0 {
+		return 0
+	}
+
+	return math.Log(float64(d))
 }
 
 func normalizeInput(inputs []uint) []float64 {
@@ -198,12 +323,12 @@ func normalizeInput(inputs []uint) []float64 {
 func saveModel(n *cnn.NeuralNetwork) error {
 	d := n.ExportWeight()
 	bs, _ := json.Marshal(d)
-	fmt.Println(string(bs))
+	// logrus.Trace(string(bs))
 	return ioutil.WriteFile("model.json", bs, os.ModePerm)
 }
 
-func loadModel(n *cnn.NeuralNetwork) error {
-	bs, err := ioutil.ReadFile("model.json")
+func loadModel(n *cnn.NeuralNetwork, name string) error {
+	bs, err := ioutil.ReadFile(name)
 	if err != nil {
 		return err
 	}

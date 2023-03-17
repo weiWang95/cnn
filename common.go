@@ -1,6 +1,10 @@
 package cnn
 
-import "math"
+import (
+	"bytes"
+	"fmt"
+	"math"
+)
 
 func Max(outs ...float64) float64 {
 	var max float64
@@ -24,4 +28,12 @@ func ArgMax(outs ...float64) int {
 	}
 
 	return idx
+}
+
+func DataInspect(data ...float64) string {
+	var buf bytes.Buffer
+	for _, item := range data {
+		buf.WriteString(fmt.Sprintf("%.06f ", item))
+	}
+	return buf.String()
 }

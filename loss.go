@@ -1,6 +1,9 @@
 package cnn
 
-import "math"
+import (
+	"fmt"
+	"math"
+)
 
 type ILoss interface {
 	Loss(outs []float64, expects []float64) float64
@@ -19,7 +22,11 @@ func (d *squareDiff) Loss(outs []float64, expects []float64) float64 {
 	var loss float64
 
 	for i, _ := range outs {
-		loss += 0.5 * math.Pow(expects[i]-outs[i], 2)
+		r := 0.5 * math.Pow(expects[i]-outs[i], 2)
+		if math.IsNaN(r) || math.IsInf(r, 0) {
+			fmt.Printf("0.5 * (%.06f-%.06f)^2 = %.06f\n", expects[i], outs[i], r)
+		}
+		loss += r
 	}
 
 	return loss
