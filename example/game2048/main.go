@@ -20,13 +20,14 @@ import (
 const w = 3
 
 var (
-	freq       = 5
-	batchSize  = 32
-	gamma      = 0.99
-	epsilon    = 0.9
-	incEpsilon = 0.0001
-	rate       = 0.001
-	minEx      = 100
+	freq             = 5
+	batchSize        = 128
+	gamma            = 1.0
+	epsilon          = 0.9
+	incEpsilon       = 0.0001
+	rate             = 0.001
+	maxEx      int64 = 6000
+	minEx            = 500
 )
 
 var operate = []g2048.Direction{g2048.DirectionUp, g2048.DirectionDown, g2048.DirectionLeft, g2048.DirectionRight}
@@ -34,10 +35,11 @@ var operate = []g2048.Direction{g2048.DirectionUp, g2048.DirectionDown, g2048.Di
 func main() {
 	// logrus.SetLevel(logrus.TraceLevel)
 	logrus.SetLevel(logrus.DebugLevel)
-	Train()
+	// Train()
 
+	rand.Seed(time.Now().UnixNano())
 	// for i := 0; i < 5; i++ {
-	// 	run(true)
+	run(false)
 	// }
 }
 
@@ -78,6 +80,7 @@ func run(print bool) {
 
 	step := 0
 	m := make(map[g2048.Direction]int)
+	arr := make([]g2048.Direction, 0)
 	for {
 		step += 1
 
@@ -85,6 +88,7 @@ func run(print bool) {
 		cont, reward := env.Operate(d)
 		// ex := operateEnv(env, d)
 		m[d] = m[d] + 1
+		arr = append(arr, d)
 
 		if print {
 			env.Inspect()
@@ -96,7 +100,7 @@ func run(print bool) {
 		}
 	}
 
-	logrus.Debugf("step:%d score:%d, %v\n", step, env.Score(), m)
+	logrus.Debugf("step:%d score:%d max:%d, %v %v\n", step, env.Score(), env.Max(), m, arr)
 }
 
 func train(ctx context.Context) <-chan struct{} {
@@ -113,7 +117,7 @@ func train(ctx context.Context) <-chan struct{} {
 		q2 := cnn.NewNeuralNetwork([]int64{w * w, 128, 4}, []cnn.IActive{cnn.ReLU, cnn.ReLU, cnn.ReLU}, cnn.SquareDiff)
 		q2.ApplyWeight(o1)
 
-		pool := NewExPool(6000)
+		pool := NewExPool(maxEx)
 		seed := time.Now().UnixNano()
 		env := g2048.NewGame(w, w, seed)
 		env.Init()
@@ -154,10 +158,15 @@ func train(ctx context.Context) <-chan struct{} {
 			// env.SetSeed(seed)
 			step := 0
 			reward := 0.0
+			actionMap := make(map[g2048.Direction]int)
+			actionArr := make([]g2048.Direction, 0)
 
 			for {
 				step += 1
 				d1 := sampleOperate(q2, env.State())
+				actionMap[d1] = actionMap[d1] + 1
+				actionArr = append(actionArr, d1)
+
 				ex := operateEnv(env, d1)
 				pool.Push(ex)
 				reward += ex.Reward
@@ -171,7 +180,7 @@ func train(ctx context.Context) <-chan struct{} {
 
 						// nextState, score, _ := env.TryOperate(item.State, d)
 						// reward := float64(score - env.Score())
-						reward := item.Reward
+						reward := item.Reward * 0.01
 						if !item.End && item.Reward != g2048.NoMoveReward {
 							inputs := normalizeInput(item.NextState)
 
@@ -209,7 +218,7 @@ func train(ctx context.Context) <-chan struct{} {
 				}
 
 				if ex.End {
-					logrus.Debugf("step:%v score:%v max:%v reward: %v\n", step, env.Score(), env.Max(), reward)
+					logrus.Debugf("step:%v score:%v max:%v reward: %v action:%v flow:%v\n", step, env.Score(), env.Max(), reward, actionMap, actionArr)
 					break
 				} else if ex.Reward == g2048.NoMoveReward {
 					for _, item := range []int{0, 1, 2, 3} {
@@ -239,9 +248,10 @@ func train(ctx context.Context) <-chan struct{} {
 }
 
 func predict(n *cnn.NeuralNetwork, state []float64) g2048.Direction {
+	// logrus.Tracef("predict input: %v", state)
 	outs := n.Compute(state...)
 	d := cnn.ArgMax(outs...)
-	logrus.Tracef("predict: %v -> %d\n", outs, d)
+	logrus.Tracef("predict: %v -> %d", outs, d)
 	return g2048.Direction(d)
 }
 
@@ -334,7 +344,9 @@ func loadModel(n *cnn.NeuralNetwork, name string) error {
 	}
 
 	var m cnn.WeightMap
-	json.Unmarshal(bs, &m)
+	if err := json.Unmarshal(bs, &m); err != nil {
+		return err
+	}
 
 	n.ApplyWeight(m)
 	return nil
