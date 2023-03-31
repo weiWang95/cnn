@@ -33,22 +33,22 @@ func getY(x float64) float64 {
 func main() {
 	n := cnn.NewNeuralNetwork([]int64{2, 1}, []cnn.IActive{cnn.Sigmoid}, cnn.LogisticDiff)
 
-	str := `[[{"0-0":1,"weight":0},{"0-0":1,"weight":0}],[{"0-0":27.071638499344214,"0-1":25.12448716824279,"weight":-25.915607424291757}]]`
-	var wm cnn.WeightMap
-	err := json.Unmarshal([]byte(str), &wm)
-	if err != nil {
-		panic(err)
-	}
-	n.ApplyWeight(wm)
+	// str := `[[{"0-0":1,"weight":0},{"0-0":1,"weight":0}],[{"0-0":27.071638499344214,"0-1":25.12448716824279,"weight":-25.915607424291757}]]`
+	// var wm cnn.WeightMap
+	// err := json.Unmarshal([]byte(str), &wm)
+	// if err != nil {
+	// 	panic(err)
+	// }
+	// n.ApplyWeight(wm)
 
 	// data := generateData(500)
 	// saveData(data)
 	data := loadData()
 	NewPointChart(data)
 
-	n.Calculate(data.Inputs)
+	// n.Calculate(data.Inputs)
 
-	lossData := n.Train(data.Inputs, data.Expects, 100, 16, 0.8, 0.01)
+	lossData := n.Train(data.Inputs, data.Expects, 200, 32, cnn.NewConstLR(0.1), 0.01)
 
 	ws := n.ExportWeight()
 	b, _ := json.Marshal(ws)

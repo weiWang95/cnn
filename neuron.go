@@ -10,7 +10,7 @@ type Neuron struct {
 
 	Net float64
 	Out float64
-	DM  map[string]float64
+	PD  float64
 }
 
 func (n *Neuron) Compute(input map[string]float64) float64 {

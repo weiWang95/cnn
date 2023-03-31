@@ -8,10 +8,8 @@ import (
 const FirstNLId = "0-0"
 
 type neuronLayerOption struct {
-	active             IActive
-	randomWeight       bool
-	defaultInputWeight float64
-	defaultWeight      float64
+	active        IActive
+	defaultWeight float64
 }
 
 type NeuronLayerOption func(opt *neuronLayerOption)
@@ -28,22 +26,10 @@ func WithNLWeigth(weight float64) NeuronLayerOption {
 	}
 }
 
-func WithNLInputWeigth(weight float64) NeuronLayerOption {
-	return func(opt *neuronLayerOption) {
-		opt.defaultInputWeight = weight
-	}
-}
-func WithNLRandomWeight() NeuronLayerOption {
-	return func(opt *neuronLayerOption) {
-		opt.randomWeight = true
-	}
-}
-
 func getDefaultNLOption() *neuronLayerOption {
 	return &neuronLayerOption{
-		active:             ReLU,
-		defaultInputWeight: 1,
-		defaultWeight:      0,
+		active:        ReLU,
+		defaultWeight: 0.1,
 	}
 }
 
@@ -54,8 +40,9 @@ type NeuronLayer struct {
 	no  int64
 	num int64
 
-	neurons []Neuron
-	opt     *neuronLayerOption
+	neurons   []Neuron
+	neuronMap map[string]*Neuron
+	opt       *neuronLayerOption
 }
 
 func NewNeuronLayer(no, num int64, prev *NeuronLayer, opts ...NeuronLayerOption) *NeuronLayer {
@@ -82,6 +69,7 @@ func NewNeuronLayer(no, num int64, prev *NeuronLayer, opts ...NeuronLayerOption)
 
 func (l *NeuronLayer) initNeurons() {
 	l.neurons = make([]Neuron, 0, l.num)
+	l.neuronMap = make(map[string]*Neuron, l.num)
 	preVNeurons := []Neuron{{Id: FirstNLId}}
 
 	if l.Prev != nil {
@@ -91,18 +79,17 @@ func (l *NeuronLayer) initNeurons() {
 	for i := 0; i < int(l.num); i++ {
 		iw := make(map[string]float64, len(preVNeurons))
 		for _, item := range preVNeurons {
-			iw[item.Id] = l.opt.defaultInputWeight
-			if l.opt.randomWeight {
-				iw[item.Id] = rand.Float64()
-			}
+			iw[item.Id] = rand.Float64()
 		}
 
-		l.neurons = append(l.neurons, Neuron{
+		n := Neuron{
 			IActive:     l.opt.active,
 			Id:          fmt.Sprintf("%d-%d", l.no, i),
 			InputWeight: iw,
 			Weight:      l.opt.defaultWeight,
-		})
+		}
+		l.neurons = append(l.neurons, n)
+		l.neuronMap[n.Id] = &l.neurons[i]
 	}
 }
 

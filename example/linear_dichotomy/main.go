@@ -7,18 +7,16 @@ import (
 	"math/rand"
 	"os"
 	"strconv"
+	"time"
 
 	"github.com/wcharczuk/go-chart/v2"
 	"github.com/weiWang95/cnn"
 )
 
-func randPoint(m float64) (float64, float64) {
-	return round2(rand.Float64() * m), round2(rand.Float64() * m)
-}
-
-func round2(v float64) float64 {
-	v, _ = strconv.ParseFloat(fmt.Sprintf("%.02f", v), 0)
-	return v
+func getY(x float64) float64 {
+	// a * x + b * y + w1 = 0.5
+	// y = (0.5 - w1 - a * x) / b
+	return (0.5 - 0.3862034259359683 + 1.4569716331686737*x) / 0.3433739866226968
 }
 
 type Data struct {
@@ -27,95 +25,38 @@ type Data struct {
 }
 
 func main() {
-	// k := &cnn.Kernel{
-	// 	Step: 1,
-	// 	Size: 3,
-	// 	Value: []float64{
-	// 		-1, -1, -1,
-	// 		-1, 8, -1,
-	// 		-1, -1, -1,
-	// 	},
-	// }
-
-	// p := &cnn.MaxPooling{
-	// 	BasePooling: cnn.BasePooling{Size: 2},
-	// }
-
-	// data := [][]float64{
-	// 	{0, 1, 0, 0, 0, 0, 0, 0},
-	// 	{0, 1, 0, 0, 1, 1, 1, 0},
-	// 	{0, 1, 0, 0, 0, 0, 1, 0},
-	// 	{0, 1, 0, 0, 0, 0, 1, 0},
-	// 	{0, 1, 0, 0, 0, 0, 1, 0},
-	// 	{0, 1, 0, 0, 0, 0, 1, 0},
-	// }
-
-	// r := k.ExtractAll(data)
-
-	// for _, v := range r {
-	// 	fmt.Println(v)
-	// }
-
-	// r2 := p.PoolingAll(p, r)
-	// for _, v := range r2 {
-	// 	fmt.Println(v)
-	// }
-
+	rand.Seed(time.Now().UnixNano())
+	// n := cnn.NewNeuralNetwork([]int64{2, 4, 1}, []cnn.IActive{cnn.ReLU, cnn.Sigmoid}, cnn.LogisticDiff)
 	n := cnn.NewNeuralNetwork([]int64{2, 1}, []cnn.IActive{cnn.Sigmoid}, cnn.LogisticDiff)
+	// str := `[[{"0-0":1,"weight":0},{"0-0":1,"weight":0}],[{"0-0":-6.01774183129974,"0-1":4.371805133005663,"weight":0.7506932650616476}]]` // 0.22
+	// var wm cnn.WeightMap
+	// err := json.Unmarshal([]byte(str), &wm)
+	// if err != nil {
+	// 	panic(err)
+	// }
+	// n.ApplyWeight(wm)
 
-	// str := `[[{"0-0":1,"weight":0},{"0-0":1,"weight":0}],[{"0-0":-7.249935669704905,"0-1":7.90453879704736,"weight":-0.6715934689739514}]]` // 0.17254570314572118
-	// str := `[[{"0-0":1,"weight":0},{"0-0":1,"weight":0}],[{"0-0":-14.98969899799228,"0-1":13.857857520509198,"weight":0.17208973994279142}]]`  // 0.07207974243123158
-	// str := `[[{"0-0":1,"weight":0},{"0-0":1,"weight":0}],[{"0-0":-18.250244719453068,"0-1":17.060935792694767,"weight":0.14705368810981495}]]` // 0.05114406571725615
-	str := `[[{"0-0":1,"weight":0},{"0-0":1,"weight":0}],[{"0-0":-18.202112009529372,"0-1":17.093395741488663,"weight":0.6617362893934389}]]` // 0.04642070943222921
-	var wm cnn.WeightMap
-	err := json.Unmarshal([]byte(str), &wm)
-	if err != nil {
-		panic(err)
-	}
-	n.ApplyWeight(wm)
-
-	data := generateData(500)
+	// data := generateData(500)
 	// saveData(data)
-	// data := loadData()
+	data := loadData()
 	NewPointChart(data)
 
-	n.Calculate(data.Inputs)
+	// n.Calculate(data.Inputs)
 
-	// lossData := n.Train(data.Inputs, data.Expects, 100, 16, 0.01, 0.01)
+	lr := cnn.NewStepLR(0.1, 0.1, 0.01, 20)
+	// lr := cnn.NewConstLR(0.1)
+	lossData := n.Train(data.Inputs, data.Expects, 1000, 64, lr, 0.01)
+	// lossData, testLossData := n.Train(data.Inputs[0:250], data.Expects[0:250], data.Inputs[250:], data.Expects[250:], 1, 1, lr, 0.01)
 
-	// ws := n.ExportWeight()
-	// b, _ := json.Marshal(ws)
-	// fmt.Println("ws -> ", string(b))
+	ws := n.ExportWeight()
+	b, _ := json.Marshal(ws)
+	fmt.Println("ws -> ", string(b))
 
 	// NewLineChart(lossData)
-	// cnn.GenerateLossChart(lossData, "test_out.png")
-}
-
-func NewLineChart(data []float64) {
-	if len(data) == 0 {
-		return
-	}
-	series := make([]chart.Series, 0)
-	xValue := make([]float64, 0, len(data))
-	for i, _ := range data {
-		xValue = append(xValue, float64(i))
-	}
-
-	series = append(series, chart.ContinuousSeries{
-		Name:    "text",
-		XValues: xValue,
-		YValues: data,
-	})
-	graph := chart.Chart{Series: series}
-	f, err := os.Create("test_out.png")
-	if err != nil {
-		panic(err)
-	}
-	defer f.Close()
-	err = graph.Render(chart.PNG, f)
-	if err != nil {
-		panic(err)
-	}
+	fmt.Println(len(lossData))
+	// fmt.Println(len(lossData), len(testLossData))
+	cnn.GenerateLossChart(lossData, "test_out.png")
+	// cnn.GenerateAllLossChart(lossData, testLossData, "test_out.png")
 }
 
 func NewPointChart(data *Data) {
@@ -160,8 +101,8 @@ func NewPointChart(data *Data) {
 		Style: chart.Style{
 			StrokeColor: chart.GetDefaultColor(1),
 		},
-		XValues: []float64{0, 0.008886, 1},
-		YValues: []float64{-0.009462, 0, 1.055400},
+		XValues: []float64{0, 1},
+		YValues: []float64{getY(0), getY(1)},
 	})
 	graph := chart.Chart{Series: series}
 	f, err := os.Create("data.png")
@@ -224,4 +165,13 @@ func loadData() *Data {
 		panic(err)
 	}
 	return &data
+}
+
+func randPoint(m float64) (float64, float64) {
+	return round2(rand.Float64() * m), round2(rand.Float64() * m)
+}
+
+func round2(v float64) float64 {
+	v, _ = strconv.ParseFloat(fmt.Sprintf("%.02f", v), 0)
+	return v
 }

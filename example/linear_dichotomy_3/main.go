@@ -18,13 +18,14 @@ type Data struct {
 }
 
 func getY(x float64) float64 {
-	return (0.5 - 1.8064707106963138 + 3.4749862954045105*x) / 3.092046613512652
+	return (0.5 + 0.9718334167298948 + 2.7848002260667166*x) / 3.142713091807425
 }
 
 func main() {
-	n := cnn.NewNeuralNetwork([]int64{2, 1}, []cnn.IActive{cnn.Sigmoid}, cnn.LogisticDiff, cnn.WithDefaultInputWeight(0.1), cnn.WithDefaultWeight(0.1))
+	n := cnn.NewNeuralNetwork([]int64{2, 1}, []cnn.IActive{cnn.Sigmoid}, cnn.LogisticDiff)
 
 	// str := `[[{"0-0":1,"weight":0},{"0-0":1,"weight":0}],[{"0-0":-3.4749862954045105,"0-1":3.092046613512652,"weight":1.8064707106963138}]]`
+	// str := `[[{"0-0":1,"weight":0},{"0-0":1,"weight":0}],[{"0-0":-2.7848002260667166,"0-1":3.142713091807425,"weight":-0.9718334167298948}]]`
 	// var wm cnn.WeightMap
 	// err := json.Unmarshal([]byte(str), &wm)
 	// if err != nil {
@@ -46,7 +47,7 @@ func main() {
 				fmt.Println("err -> ", err)
 			}
 		}()
-		lossData = n.Train(data.Inputs, data.Expects, 1000, 32, 0.1, 0.01)
+		lossData = n.Train(data.Inputs, data.Expects, 1000, 32, cnn.NewConstLR(0.1), 0.01)
 
 		// outs := n.Calculate(data.Inputs)
 		// for i, item := range outs {

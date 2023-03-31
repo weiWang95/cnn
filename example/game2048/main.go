@@ -21,8 +21,8 @@ const w = 3
 
 var (
 	freq             = 5
-	batchSize        = 128
-	gamma            = 1.0
+	batchSize        = 64
+	gamma            = 0.99
 	epsilon          = 0.9
 	incEpsilon       = 0.0001
 	rate             = 0.001
@@ -35,18 +35,21 @@ var operate = []g2048.Direction{g2048.DirectionUp, g2048.DirectionDown, g2048.Di
 func main() {
 	// logrus.SetLevel(logrus.TraceLevel)
 	logrus.SetLevel(logrus.DebugLevel)
-	// Train()
+	Train()
 
-	rand.Seed(time.Now().UnixNano())
+	// q := cnn.NewNeuralNetwork([]int64{w * w, 128, 4}, []cnn.IActive{cnn.ReLU, cnn.ReLU, cnn.ReLU}, cnn.SquareDiff, cnn.WithSoftmax())
+	// loadModel(q, "model.json")
+	// rand.Seed(time.Now().UnixNano())
 	// for i := 0; i < 5; i++ {
-	run(false)
+	// run(q, false)
 	// }
 }
 
 func Train() {
+	q := cnn.NewNeuralNetwork([]int64{w * w, 128, 4}, []cnn.IActive{cnn.ReLU, cnn.ReLU, cnn.ReLU}, cnn.SquareDiff)
+
 	ctx, cancel := context.WithCancel(context.Background())
-	done := train(ctx)
-	// train2()
+	done := train(ctx, q)
 
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGQUIT, syscall.SIGTERM, syscall.SIGINT)
@@ -63,15 +66,11 @@ func Train() {
 
 	for i := 0; i < 5; i++ {
 		logrus.Infof("start run: %d", i)
-		run(false)
+		run(q, false)
 	}
 }
 
-func run(print bool) {
-	q := cnn.NewNeuralNetwork([]int64{w * w, 128, 4}, []cnn.IActive{cnn.ReLU, cnn.ReLU, cnn.ReLU}, cnn.SquareDiff, cnn.WithSoftmax())
-	// loadModel(q, "model_3x3.json")
-	loadModel(q, "model.json")
-
+func run(q *cnn.NeuralNetwork, print bool) {
 	env := g2048.NewGame(w, w, time.Now().UnixNano())
 	env.Init()
 	if print {
@@ -103,14 +102,13 @@ func run(print bool) {
 	logrus.Debugf("step:%d score:%d max:%d, %v %v\n", step, env.Score(), env.Max(), m, arr)
 }
 
-func train(ctx context.Context) <-chan struct{} {
+func train(ctx context.Context, q *cnn.NeuralNetwork) <-chan struct{} {
 	var stop bool
 	done := make(chan struct{})
 
 	go func() {
 		rand.Seed(time.Now().UnixNano())
 		result := make([]float64, 0)
-		q := cnn.NewNeuralNetwork([]int64{w * w, 128, 4}, []cnn.IActive{cnn.ReLU, cnn.ReLU, cnn.ReLU}, cnn.SquareDiff, cnn.WithDefaultInputWeight(0.0001), cnn.WithDefaultWeight(0.0001))
 		// loadModel(q, "model.json")
 		o1 := q.ExportWeight()
 
@@ -144,7 +142,7 @@ func train(ctx context.Context) <-chan struct{} {
 
 			if ex.End {
 				env.Init()
-				// env.SetSeed(seed)
+				env.SetSeed(time.Now().UnixNano())
 			}
 		}
 
@@ -155,7 +153,7 @@ func train(ctx context.Context) <-chan struct{} {
 			}
 			logrus.Debugf("start run: %d eps:%.06f \n", i, epsilon)
 			env.Init()
-			// env.SetSeed(seed)
+			env.SetSeed(time.Now().UnixNano())
 			step := 0
 			reward := 0.0
 			actionMap := make(map[g2048.Direction]int)
@@ -180,8 +178,8 @@ func train(ctx context.Context) <-chan struct{} {
 
 						// nextState, score, _ := env.TryOperate(item.State, d)
 						// reward := float64(score - env.Score())
-						reward := item.Reward * 0.01
-						if !item.End && item.Reward != g2048.NoMoveReward {
+						reward := item.Reward
+						if !item.End {
 							inputs := normalizeInput(item.NextState)
 
 							qouts := q.Compute(inputs...)
@@ -203,9 +201,6 @@ func train(ctx context.Context) <-chan struct{} {
 
 						qouts[item.Action] = reward
 						q.BP(rate, qouts...)
-						// expects := []float64{0, 0, 0, 0}
-						// expects[item.Action] = reward
-						// q.BP(rate, expects...)
 					}
 
 					avgLoss = avgLoss / float64(batchSize)
@@ -224,8 +219,8 @@ func train(ctx context.Context) <-chan struct{} {
 					for _, item := range []int{0, 1, 2, 3} {
 						ex := operateEnv(env, g2048.Direction(item))
 						pool.Push(ex)
+						reward += ex.Reward
 						if ex.Reward != g2048.NoMoveReward {
-							reward += ex.Reward
 							break
 						}
 					}

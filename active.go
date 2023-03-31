@@ -5,6 +5,7 @@ import (
 )
 
 type IActive interface {
+	Name() string
 	Active(v float64) float64
 	BP(dout, out float64) float64
 }
@@ -16,6 +17,10 @@ var (
 )
 
 type reLU struct {
+}
+
+func (a *reLU) Name() string {
+	return "ReLU"
 }
 
 func (a *reLU) Active(v float64) float64 {
@@ -36,6 +41,10 @@ func (a *reLU) BP(dout, out float64) float64 {
 type leakyReLU struct {
 }
 
+func (a *leakyReLU) Name() string {
+	return "LeakyReLU"
+}
+
 func (a *leakyReLU) Active(v float64) float64 {
 	if v > 0 {
 		return v
@@ -52,6 +61,10 @@ func (a *leakyReLU) BP(dout, out float64) float64 {
 }
 
 type sigmoid struct {
+}
+
+func (a *sigmoid) Name() string {
+	return "Sigmoid"
 }
 
 func (a *sigmoid) Active(v float64) float64 {
