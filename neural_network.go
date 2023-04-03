@@ -17,11 +17,12 @@ type NeuralNetwork struct {
 	softmaxOuts []float64
 }
 
-type WeightMap [][]map[string]float64
+type WeightMap map[string][2][]float64
 
 type networkOption struct {
 	Softmax       bool
 	DefaultWeight float64
+	optimizer     Optimizer
 }
 
 func defaultNetworkOption() *networkOption {
@@ -44,6 +45,12 @@ func WithDefaultWeight(weight float64) NetWorkOption {
 	}
 }
 
+func WithOptimizer(optimizer Optimizer) NetWorkOption {
+	return func(opt *networkOption) {
+		opt.optimizer = optimizer
+	}
+}
+
 func NewNeuralNetwork(data []int64, actives []IActive, lossFn ILoss, opts ...NetWorkOption) *NeuralNetwork {
 	n := new(NeuralNetwork)
 	n.opt = defaultNetworkOption()
@@ -57,9 +64,9 @@ func NewNeuralNetwork(data []int64, actives []IActive, lossFn ILoss, opts ...Net
 	for i, num := range data {
 		opts := make([]NeuronLayerOption, 0)
 		if i == 0 {
-			opts = append(opts, WithNLWeigth(0))
+			opts = append(opts, WithNLBias(0))
 		} else if n.opt.DefaultWeight != 0 {
-			opts = append(opts, WithNLWeigth(n.opt.DefaultWeight))
+			opts = append(opts, WithNLBias(n.opt.DefaultWeight))
 		}
 
 		if cur == nil {
@@ -89,10 +96,6 @@ func (n *NeuralNetwork) initWeight() {
 
 		// 输入层
 		if cur.Prev == nil {
-			for i := range cur.neurons {
-				cur.neurons[i].InputWeight["0-0"] = 1
-				cur.neurons[i].Weight = 0
-			}
 			cur = cur.Next
 			continue
 		}
@@ -102,9 +105,7 @@ func (n *NeuralNetwork) initWeight() {
 		weights := wg.GetWeight(int(cur.Prev.num), int(cur.num))
 
 		for i := range weights {
-			for j := range cur.neurons {
-				cur.neurons[j].InputWeight[cur.Prev.neurons[i].Id] = weights[i][j]
-			}
+			cur.neurons[i].Weights = weights[i]
 		}
 
 		cur = cur.Next
@@ -284,17 +285,28 @@ func (n *NeuralNetwork) Compute(inputs ...float64) []float64 {
 }
 
 func (n *NeuralNetwork) BP(step float64, expects ...float64) {
-	cur := n.outputLayer
+	optimizer := n.opt.optimizer
+	if optimizer == nil {
+		optimizer = NewNoneOptimizer(step)
+	}
+	weights, grads := make(map[string][]float64), make(map[string][]float64)
 
+	cur := n.outputLayer
 	for {
 		if cur.Prev == nil {
 			break
 		}
 
 		for i, neuron := range cur.neurons {
+			// 权重
+			curWeights := make([]float64, len(neuron.Weights))
+			copy(curWeights, neuron.Weights)
+			curGrads := make([]float64, len(neuron.Weights))
+			// 偏差
+			biasKey := neuron.BiasId()
+			weights[biasKey] = []float64{neuron.Bias}
+
 			out := neuron.Out
-			cur.neurons[i].OldWeight = cur.neurons[i].InputWeight
-			cur.neurons[i].InputWeight = make(map[string]float64)
 
 			var pd float64
 			if cur.Next == nil {
@@ -304,19 +316,19 @@ func (n *NeuralNetwork) BP(step float64, expects ...float64) {
 				} else {
 					// pd = n.lossFn.BP(out, expects[i]) * out * (1 - out)
 					// fmt.Printf("%.06f * %.06f * (1 - %.06f) => %.06f\n", n.lossFn.BP(out, expects[i]), out, out, pd)
-					pd = cur.neurons[i].BP(n.lossFn.BP(out, expects[i]), out)
+					pd = neuron.BP(n.lossFn.BP(out, expects[i]), out)
 					if math.IsNaN(pd) {
 						fmt.Printf("%.06f * %.06f * (1 - %.06f) => %.06f\n", n.lossFn.BP(out, expects[i]), out, out, pd)
 					}
 				}
 			} else {
 				var sum float64
-				for m, _ := range cur.Next.neurons {
-					sum += cur.Next.neurons[m].PD * cur.Next.neurons[m].OldWeight[cur.neurons[i].Id]
+				for _, nextNeuron := range cur.Next.neurons {
+					sum += grads[nextNeuron.Id][i] * neuron.Out * weights[nextNeuron.Id][i]
 				}
 				// pd = sum * out * (1 - out)
 				// fmt.Printf("sum -> %.06f * %.06f * (1 - %.06f) => %.06f\n", sum, out, out, pd)
-				pd = cur.neurons[i].BP(sum, out)
+				pd = neuron.BP(sum, out)
 				if math.IsNaN(pd) {
 					fmt.Printf("sum -> %.06f * %.06f * (1 - %.06f) => %.06f\n", sum, out, out, pd)
 				}
@@ -325,37 +337,35 @@ func (n *NeuralNetwork) BP(step float64, expects ...float64) {
 				panic("NaN")
 			}
 
-			for k, v := range cur.neurons[i].OldWeight {
-				outW := cur.Prev.neuronMap[k].Out
-				// fmt.Printf("input weight -> %v - %v * %v * %v => ", v, step, pd, outW)
-				d := v - step*pd*outW
-				// fmt.Printf("%v\n", d)
-				cur.neurons[i].InputWeight[k] = d
+			for idx := range neuron.Weights {
+				curGrads[idx] = pd * cur.Prev.neurons[idx].Out // 权重偏导
 			}
 
-			// fmt.Printf("weight -> %v - %v * %v => ", cur.neurons[i].Weight, step, pd)
-			cur.neurons[i].Weight = cur.neurons[i].Weight - step*pd*1
-			// fmt.Printf("%v\n", cur.neurons[i].Weight)
+			// 权重
+			weights[neuron.Id] = curWeights    // 权重
+			grads[neuron.Id] = curGrads        // 权重偏导
+			grads[biasKey] = []float64{pd * 1} // 偏差偏导
+		}
 
-			cur.neurons[i].PD = pd
+		cur = cur.Prev
+	}
 
-			// fmt.Printf("n[%s]\n", cur.neurons[i].Id)
-			// fmt.Printf("old => ")
-			// for k, v := range cur.neurons[i].OldWeight {
-			// 	fmt.Printf("%s:%.06f ", k, v)
-			// }
-			// fmt.Println()
-			// fmt.Printf("new => ")
-			// for k, v := range cur.neurons[i].InputWeight {
-			// 	fmt.Printf("%s:%.06f ", k, v)
-			// }
-			// fmt.Println()
+	// 优化器
+	newWeight := optimizer.Update(weights, grads)
+	n.applyOptimizerWeights(newWeight)
+}
 
-			// fmt.Printf("dm => ")
-			// for k, v := range cur.neurons[i].DM {
-			// 	fmt.Printf("%s:%.06f ", k, v)
-			// }
-			// fmt.Println()
+func (n *NeuralNetwork) applyOptimizerWeights(weights map[string][]float64) {
+	cur := n.outputLayer
+
+	for {
+		if cur.Prev == nil {
+			break
+		}
+
+		for i := range cur.neurons {
+			cur.neurons[i].Weights = weights[cur.neurons[i].Id]
+			cur.neurons[i].Bias = weights[cur.neurons[i].BiasId()][0]
 		}
 
 		cur = cur.Prev
@@ -410,21 +420,16 @@ func (n *NeuralNetwork) SoftmaxBP(outs []float64, expects []float64) []float64 {
 }
 
 func (n *NeuralNetwork) ApplyWeight(data WeightMap) {
-	i := 0
 	cur := n.inputLayer
 
 	for {
-		for j, _ := range cur.neurons {
-			m := make(map[string]float64, len(data[i][j]))
-			for k, v := range data[i][j] {
-				if k == "weight" {
-					cur.neurons[j].Weight = v
-					continue
-				}
-				m[k] = v
+		for _, neuron := range cur.neurons {
+			if _, ok := data[neuron.Id]; !ok {
+				continue
 			}
 
-			cur.neurons[j].InputWeight = m
+			neuron.Weights = data[neuron.Id][0]
+			neuron.Bias = data[neuron.Id][1][0]
 		}
 
 		if cur.Next == nil {
@@ -432,7 +437,6 @@ func (n *NeuralNetwork) ApplyWeight(data WeightMap) {
 		}
 
 		cur = cur.Next
-		i += 1
 	}
 }
 
@@ -448,20 +452,13 @@ func (n *NeuralNetwork) getWeightGenerator(active IActive) WeightGenerator {
 }
 
 func (n *NeuralNetwork) ExportWeight() WeightMap {
-	data := make(WeightMap, 0)
+	data := make(map[string][2][]float64)
 
 	cur := n.inputLayer
 	for {
-		m := make([]map[string]float64, 0)
-		for i, _ := range cur.neurons {
-			mm := make(map[string]float64, len(cur.neurons[i].InputWeight))
-			for k, v := range cur.neurons[i].InputWeight {
-				mm[k] = v
-			}
-			mm["weight"] = cur.neurons[i].Weight
-			m = append(m, mm)
+		for i, neuron := range cur.neurons {
+			data[neuron.Id] = [2][]float64{neuron.Weights, {cur.neurons[i].Bias}}
 		}
-		data = append(data, m)
 
 		if cur.Next == nil {
 			break

@@ -27,7 +27,8 @@ type Data struct {
 func main() {
 	rand.Seed(time.Now().UnixNano())
 	// n := cnn.NewNeuralNetwork([]int64{2, 4, 1}, []cnn.IActive{cnn.ReLU, cnn.Sigmoid}, cnn.LogisticDiff)
-	n := cnn.NewNeuralNetwork([]int64{2, 1}, []cnn.IActive{cnn.Sigmoid}, cnn.LogisticDiff)
+	optimizer := cnn.NewAdamOptimizer(0.1, 0.9, 0.999, 10e-8)
+	n := cnn.NewNeuralNetwork([]int64{2, 1}, []cnn.IActive{cnn.Sigmoid}, cnn.LogisticDiff, cnn.WithOptimizer(optimizer))
 	// str := `[[{"0-0":1,"weight":0},{"0-0":1,"weight":0}],[{"0-0":-6.01774183129974,"0-1":4.371805133005663,"weight":0.7506932650616476}]]` // 0.22
 	// var wm cnn.WeightMap
 	// err := json.Unmarshal([]byte(str), &wm)
@@ -45,7 +46,7 @@ func main() {
 
 	lr := cnn.NewStepLR(0.1, 0.1, 0.01, 20)
 	// lr := cnn.NewConstLR(0.1)
-	lossData := n.Train(data.Inputs, data.Expects, 1000, 64, lr, 0.01)
+	lossData := n.Train(data.Inputs, data.Expects, 100, 64, lr, 0.01)
 	// lossData, testLossData := n.Train(data.Inputs[0:250], data.Expects[0:250], data.Inputs[250:], data.Expects[250:], 1, 1, lr, 0.01)
 
 	ws := n.ExportWeight()

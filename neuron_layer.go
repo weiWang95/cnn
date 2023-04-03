@@ -2,14 +2,13 @@ package cnn
 
 import (
 	"fmt"
-	"math/rand"
 )
 
 const FirstNLId = "0-0"
 
 type neuronLayerOption struct {
-	active        IActive
-	defaultWeight float64
+	active      IActive
+	defaultBias float64
 }
 
 type NeuronLayerOption func(opt *neuronLayerOption)
@@ -20,16 +19,16 @@ func WithNLActive(active IActive) NeuronLayerOption {
 	}
 }
 
-func WithNLWeigth(weight float64) NeuronLayerOption {
+func WithNLBias(bias float64) NeuronLayerOption {
 	return func(opt *neuronLayerOption) {
-		opt.defaultWeight = weight
+		opt.defaultBias = bias
 	}
 }
 
 func getDefaultNLOption() *neuronLayerOption {
 	return &neuronLayerOption{
-		active:        ReLU,
-		defaultWeight: 0.1,
+		active:      ReLU,
+		defaultBias: 0.1,
 	}
 }
 
@@ -70,23 +69,15 @@ func NewNeuronLayer(no, num int64, prev *NeuronLayer, opts ...NeuronLayerOption)
 func (l *NeuronLayer) initNeurons() {
 	l.neurons = make([]Neuron, 0, l.num)
 	l.neuronMap = make(map[string]*Neuron, l.num)
-	preVNeurons := []Neuron{{Id: FirstNLId}}
-
-	if l.Prev != nil {
-		preVNeurons = l.Prev.neurons
-	}
 
 	for i := 0; i < int(l.num); i++ {
-		iw := make(map[string]float64, len(preVNeurons))
-		for _, item := range preVNeurons {
-			iw[item.Id] = rand.Float64()
-		}
-
 		n := Neuron{
-			IActive:     l.opt.active,
-			Id:          fmt.Sprintf("%d-%d", l.no, i),
-			InputWeight: iw,
-			Weight:      l.opt.defaultWeight,
+			IActive: l.opt.active,
+			Id:      fmt.Sprintf("%d-%d", l.no, i),
+		}
+		if l.Prev != nil {
+			n.Weights = make([]float64, 0, l.Prev.num)
+			n.Bias = l.opt.defaultBias
 		}
 		l.neurons = append(l.neurons, n)
 		l.neuronMap[n.Id] = &l.neurons[i]
@@ -102,19 +93,16 @@ func (l *NeuronLayer) Compute(inputs ...float64) []float64 {
 
 	outs := make([]float64, 0)
 
+	// 输入层
 	if l.Prev == nil {
-		for i, input := range inputs {
-			out := l.neurons[i].Compute(map[string]float64{FirstNLId: input})
-			outs = append(outs, out)
-		}
-	} else {
-		m := make(map[string]float64, l.Prev.num)
-		for i, item := range l.Prev.neurons {
-			m[item.Id] = inputs[i]
+		for i := range l.neurons {
+			l.neurons[i].Out = inputs[i]
 		}
 
-		for i, _ := range l.neurons {
-			out := l.neurons[i].Compute(m)
+		outs = inputs
+	} else {
+		for i := range l.neurons {
+			out := l.neurons[i].Compute(inputs)
 			outs = append(outs, out)
 		}
 	}

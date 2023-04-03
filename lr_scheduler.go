@@ -35,7 +35,7 @@ func NewStepLR(lr, rate, minLr float64, step int) LRScheduler {
 }
 
 func (r *stepLR) GetLR(epoch int) float64 {
-	if epoch%r.step == 0 && r.lr > r.minLr {
+	if epoch >= r.step && epoch%r.step == 0 && r.lr > r.minLr {
 		r.lr = r.lr * (1 - r.rate)
 		if r.lr < r.minLr {
 			r.lr = r.minLr

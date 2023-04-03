@@ -35,18 +35,18 @@ var operate = []g2048.Direction{g2048.DirectionUp, g2048.DirectionDown, g2048.Di
 func main() {
 	// logrus.SetLevel(logrus.TraceLevel)
 	logrus.SetLevel(logrus.DebugLevel)
-	Train()
+	// Train()
 
-	// q := cnn.NewNeuralNetwork([]int64{w * w, 128, 4}, []cnn.IActive{cnn.ReLU, cnn.ReLU, cnn.ReLU}, cnn.SquareDiff, cnn.WithSoftmax())
-	// loadModel(q, "model.json")
-	// rand.Seed(time.Now().UnixNano())
+	q := cnn.NewNeuralNetwork([]int64{w * w, 128, 4}, []cnn.IActive{cnn.LeakyReLU, cnn.LeakyReLU, cnn.LeakyReLU}, cnn.SquareDiff, cnn.WithSoftmax())
+	loadModel(q, "model.json")
+	rand.Seed(time.Now().UnixNano())
 	// for i := 0; i < 5; i++ {
-	// run(q, false)
+	run(q, true)
 	// }
 }
 
 func Train() {
-	q := cnn.NewNeuralNetwork([]int64{w * w, 128, 4}, []cnn.IActive{cnn.ReLU, cnn.ReLU, cnn.ReLU}, cnn.SquareDiff)
+	q := cnn.NewNeuralNetwork([]int64{w * w, 128, 4}, []cnn.IActive{cnn.LeakyReLU, cnn.LeakyReLU, cnn.LeakyReLU}, cnn.SquareDiff)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := train(ctx, q)
@@ -112,7 +112,7 @@ func train(ctx context.Context, q *cnn.NeuralNetwork) <-chan struct{} {
 		// loadModel(q, "model.json")
 		o1 := q.ExportWeight()
 
-		q2 := cnn.NewNeuralNetwork([]int64{w * w, 128, 4}, []cnn.IActive{cnn.ReLU, cnn.ReLU, cnn.ReLU}, cnn.SquareDiff)
+		q2 := cnn.NewNeuralNetwork([]int64{w * w, 128, 4}, []cnn.IActive{cnn.LeakyReLU, cnn.LeakyReLU, cnn.LeakyReLU}, cnn.SquareDiff)
 		q2.ApplyWeight(o1)
 
 		pool := NewExPool(maxEx)

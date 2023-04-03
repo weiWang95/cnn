@@ -12,9 +12,9 @@ type WeightGenerator interface {
 type xavierGenerator struct{}
 
 func (xavierGenerator) GetWeight(inputSize, outputSize int) [][]float64 {
-	weights := make([][]float64, inputSize)
+	weights := make([][]float64, outputSize)
 	for i := range weights {
-		weights[i] = make([]float64, outputSize)
+		weights[i] = make([]float64, inputSize)
 		for j := range weights[i] {
 			weights[i][j] = rand.NormFloat64() * math.Sqrt(1/float64(inputSize))
 		}
@@ -25,9 +25,9 @@ func (xavierGenerator) GetWeight(inputSize, outputSize int) [][]float64 {
 type heGenerator struct{}
 
 func (heGenerator) GetWeight(inputSize, outputSize int) [][]float64 {
-	weights := make([][]float64, inputSize)
+	weights := make([][]float64, outputSize)
 	for i := range weights {
-		weights[i] = make([]float64, outputSize)
+		weights[i] = make([]float64, inputSize)
 		for j := range weights[i] {
 			weights[i][j] = rand.NormFloat64() * math.Sqrt(2/float64(inputSize))
 		}
