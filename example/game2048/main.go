@@ -35,14 +35,14 @@ var operate = []g2048.Direction{g2048.DirectionUp, g2048.DirectionDown, g2048.Di
 func main() {
 	// logrus.SetLevel(logrus.TraceLevel)
 	logrus.SetLevel(logrus.DebugLevel)
-	// Train()
+	Train()
 
-	q := cnn.NewNeuralNetwork([]int64{w * w, 128, 4}, []cnn.IActive{cnn.LeakyReLU, cnn.LeakyReLU, cnn.LeakyReLU}, cnn.SquareDiff, cnn.WithSoftmax())
-	loadModel(q, "model.json")
-	rand.Seed(time.Now().UnixNano())
-	// for i := 0; i < 5; i++ {
-	run(q, true)
-	// }
+	// q := cnn.NewNeuralNetwork([]int64{w * w, 128, 4}, []cnn.IActive{cnn.LeakyReLU, cnn.LeakyReLU, cnn.LeakyReLU}, cnn.SquareDiff, cnn.WithSoftmax())
+	// loadModel(q, "model.json")
+	// rand.Seed(time.Now().UnixNano())
+	// // for i := 0; i < 5; i++ {
+	// run(q, true)
+	// // }
 }
 
 func Train() {

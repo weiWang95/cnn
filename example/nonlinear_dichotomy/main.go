@@ -15,8 +15,12 @@ import (
 
 func main() {
 	rand.Seed(time.Now().UnixNano())
-	// opt := cnn.NewAdamOptimizer(0.03, 0.9, 0.99, 10e-8)
-	n := cnn.NewNeuralNetwork([]int64{2, 4, 1}, []cnn.IActive{cnn.LeakyReLU, cnn.Sigmoid}, cnn.LogisticDiff) //, cnn.WithOptimizer(opt))
+	opt := cnn.NewAdamOptimizer(0.01, 0.9, 0.99, 10e-8)
+	n := cnn.NewNeuralNetwork([]int64{2, 4, 1}, []cnn.IActive{cnn.ReLU, cnn.Sigmoid}, cnn.LogisticDiff, cnn.WithOptimizer(opt))
+
+	w1 := n.ExportWeight()
+	b1, _ := json.Marshal(w1)
+	fmt.Println("ws -> ", string(b1))
 
 	// str := `[[{"0-0":1,"weight":0},{"0-0":1,"weight":0}],[{"0-0":-0.42623881529928515,"0-1":-1.2662420320501753,"weight":-0.4618140695180213},{"0-0":-0.813579366965817,"0-1":-1.0647499327061312,"weight":-0.3557059077141387},{"0-0":-1.7325139832205683,"0-1":-3.558990999482263,"weight":-0.41523105689009165},{"0-0":-1.3902028577164252,"0-1":-1.1454229080151248,"weight":-0.12889147678091667}],[{"1-0":0.21132839643936813,"1-1":0.4724259531971717,"1-2":0.8839977210919784,"1-3":0.42164757853677637,"weight":0.036590179686797744},{"1-0":0.5163542349405961,"1-1":0.3458006607576927,"1-2":0.8577581342870433,"1-3":-0.02229141035306279,"weight":-0.29254329541182755},{"1-0":0.9049583210477231,"1-1":0.27388502559495603,"1-2":0.38274888576839294,"1-3":-0.04827892714110561,"weight":-0.44293757063884975},{"1-0":0.15871749882724664,"1-1":0.18612022241400436,"1-2":0.15558884041171722,"1-3":-0.10351322327833107,"weight":-0.5991512294335709}],[{"2-0":-0.3584482425692751,"2-1":0.03093842328081094,"2-2":-0.02948563844536686,"2-3":0.3894405555847553,"weight":-0.8208762429056098}]]`
 	// var wm cnn.WeightMap
@@ -30,17 +34,17 @@ func main() {
 
 	lr := cnn.NewStepLR(0.1, 0.5, 0.001, 100)
 	// lr := cnn.NewConstLR(0.03)
-	// lossData := n.Train(data.Inputs, data.Expects, 10, 32, lr, 0.1)
-	lossData, testLossData := n.TrainWithTest(data.Inputs[0:100], data.Expects[0:100], data.Inputs[100:], data.Expects[100:], 1000, 16, lr, 0.1)
+	lossData := n.Train(data.Inputs, data.Expects, 1000, 64, lr, 0.1)
+	// lossData, testLossData := n.TrainWithTest(data.Inputs[0:100], data.Expects[0:100], data.Inputs[100:], data.Expects[100:], 1000, 64, lr, 0.1)
 
 	ws := n.ExportWeight()
 	b, _ := json.Marshal(ws)
 	fmt.Println("ws -> ", string(b))
 
-	// cnn.GenerateLossChart(lossData, "test_out.png")
+	cnn.GenerateLossChart(lossData, "test_out.png")
 
-	fmt.Println(len(lossData), len(testLossData))
-	cnn.GenerateAllLossChart(lossData, testLossData, "test_out.png")
+	// fmt.Println(len(lossData), len(testLossData))
+	// cnn.GenerateAllLossChart(lossData, testLossData, "test_out.png")
 
 	// var count int
 	// for i, input := range data.Inputs {
